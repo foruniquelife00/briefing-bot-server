@@ -1,0 +1,10 @@
+config.py
+*.db
+*.log
+alert_log.json
+watchlist.json
+ai_watchlist.json
+alert_settings.json
+__pycache__/
+*.pyc
+.env
