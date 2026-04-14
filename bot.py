@@ -239,13 +239,52 @@ def run_alert():
     except Exception as e:
         logging.error(f"알림 오류: {e}")
 
+def run_event_detection():
+    """30분마다 실시간 이벤트 감지"""
+    try:
+        from event_engine import run_event_detection as detect
+        detect()
+    except Exception as e:
+        logging.error(f"이벤트 감지 오류: {e}")
+
+
+def is_market_open() -> bool:
+    """한국 장 시간 체크 (KST 09:00~15:30 평일)"""
+    from datetime import datetime, timezone, timedelta
+    kst = datetime.now(timezone(timedelta(hours=9)))
+    if kst.weekday() >= 5:
+        return False
+    h, m = kst.hour, kst.minute
+    return (h == 9) or (10 <= h <= 14) or (h == 15 and m <= 30)
+
+
+def is_daytime() -> bool:
+    """낮 시간 체크 (KST 07:00~23:00)"""
+    from datetime import datetime, timezone, timedelta
+    kst = datetime.now(timezone(timedelta(hours=9)))
+    return 7 <= kst.hour <= 23
+
+
+def run_alert_if_market_open():
+    """장 시간에만 급등락 알림"""
+    if is_market_open():
+        run_alert()
+
+
+def run_event_detection_if_daytime():
+    """낮 시간에만 이벤트 감지"""
+    if is_daytime():
+        run_event_detection()
+
 def run_scheduler():
     # KST 09:30 = UTC 00:30
-    schedule.every().day.at("00:30").do(run_briefing)
-    schedule.every().monday.at("00:30").do(run_weekly)
+    schedule.every().day.at("23:00").do(run_briefing)
+    schedule.every().monday.at("23:00").do(run_weekly)
     schedule.every().friday.at("14:00").do(run_friday)
-    schedule.every().day.at("00:30").do(run_monthly_if_first)
-    schedule.every(30).minutes.do(run_alert)
+    schedule.every().day.at("23:00").do(run_monthly_if_first)
+    schedule.every(30).minutes.do(run_alert_if_market_open)
+    schedule.every(60).minutes.do(run_event_detection_if_daytime)
+    schedule.every().day.at("01:00").do(run_git_backup)
 
     logging.info("스케줄러 시작 — KST 09:30 브리핑 / 30분마다 알림")
     print("스케줄러 시작 — KST 09:30 브리핑 / 30분마다 알림")
@@ -301,3 +340,26 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
+def run_git_backup():
+    """매일 GitHub 자동 백업"""
+    try:
+        import subprocess
+        from datetime import datetime, timezone, timedelta
+        kst  = datetime.now(timezone(timedelta(hours=9)))
+        date = kst.strftime("%Y-%m-%d %H:%M")
+        subprocess.run(["git", "-C", "/root/briefing-bot", "add", "."], check=True)
+        result = subprocess.run(
+            ["git", "-C", "/root/briefing-bot", "commit", "-m", f"🤖 자동 백업: {date}"],
+            capture_output=True, text=True
+        )
+        if "nothing to commit" not in result.stdout:
+            subprocess.run(["git", "-C", "/root/briefing-bot", "push"], check=True)
+            logging.info("GitHub 백업 완료")
+        else:
+            logging.info("GitHub 백업: 변경사항 없음")
+    except Exception as e:
+        logging.error(f"GitHub 백업 오류: {e}")
+
+
