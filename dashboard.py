@@ -331,9 +331,6 @@ with tab2:
                     f"<div style='color:#4a5568;font-size:10px;margin:2px 0'>{sector} {icon}</div>"
                     f"<div style='color:#2d3748;font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis'>{reason}</div>"
                     f"</div>", unsafe_allow_html=True)
-                    f"<div style='color:#2d3748;font-size:10px;white-space:nowrap;"
-                    f"overflow:hidden;text-overflow:ellipsis'>{reason}</div>"
-                    f"</div>", unsafe_allow_html=True)
 
         if len(filtered) > 5:
             with st.expander(f"나머지 {len(filtered)-5}개"):
