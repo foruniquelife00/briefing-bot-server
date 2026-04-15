@@ -338,6 +338,22 @@ def main():
     except Exception as e:
         logging.error(f"명령어 등록 오류: {e}")
 
+    # 시작 시 오늘 브리핑 없으면 즉시 실행
+    import sqlite3 as _sqlite3
+    from datetime import datetime as _dt, timezone as _tz, timedelta as _td
+    _kst = _dt.now(_tz(_td(hours=9)))
+    _today = _kst.strftime("%Y-%m-%d")
+    if _kst.weekday() < 5:
+        try:
+            _conn = _sqlite3.connect(config.DB_PATH)
+            _row = _conn.execute("SELECT id FROM briefing_history WHERE date = ?", (_today,)).fetchone()
+            _conn.close()
+            if not _row:
+                logging.info("오늘 브리핑 없음 → 즉시 실행")
+                threading.Thread(target=run_briefing, daemon=True).start()
+        except Exception as _e:
+            logging.error(f"브리핑 체크 오류: {_e}")
+
     # 스케줄러 백그라운드 스레드
     t = threading.Thread(target=run_scheduler, daemon=True)
     t.start()
