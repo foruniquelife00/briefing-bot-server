@@ -183,20 +183,10 @@ with tab1:
     fgi = macro.get("fgi",0)
     fgi_icon = "🟢" if fgi>50 else "🔴" if fgi<25 else "🟡"
     mi1,mi2,mi3,mi4 = st.columns(4)
-    fgi_color = "#38a169" if fgi>50 else "#e53e3e" if fgi<25 else "#d69e2e"
-    for col, label, val, sub in [
-        (mi1, "💱 원/달러 환율", f"{macro.get('usd',0):,.0f}원", ""),
-        (mi2, "📊 VIX 공포지수", f"{macro.get('vix',0):.1f}", "낮을수록 안정"),
-        (mi3, "🏦 미국 10년물 금리", f"{macro.get('us10y',0):.2f}%", ""),
-        (mi4, "😨 공포탐욕지수", f"{fgi_icon} {fgi}", macro.get('fgi_label','')),
-    ]:
-        with col:
-            st.markdown(
-                f"<div style='background:#f7fafc;border:1px solid #e2e8f0;border-radius:6px;padding:5px 10px'>"
-                f"<div style='font-size:11px;color:#4a5568'>{label}</div>"
-                f"<div style='font-size:14px;font-weight:700;color:#1a202c'>{val}</div>"
-                f"<div style='font-size:10px;color:#718096'>{sub}</div>"
-                f"</div>", unsafe_allow_html=True)
+    mi1.metric("💱 원/달러 환율", f"{macro.get('usd',0):,.0f}원")
+    mi2.metric("📊 VIX 공포지수", f"{macro.get('vix',0):.1f}")
+    mi3.metric("🏦 미국 10년물 금리", f"{macro.get('us10y',0):.2f}%")
+    mi4.metric(f"😨 공포탐욕지수", f"{fgi_icon} {fgi}", macro.get('fgi_label',''))
 
     st.divider()
 
@@ -326,13 +316,10 @@ with tab2:
                 bg = bg_map.get(style,"#f7fafc")
                 bd = bd_map.get(style,"#e2e8f0")
                 st.markdown(
-                    f"<div style='background:{bg};border:2px solid {bd};border-radius:6px;padding:6px 8px'>"
-                    f"<div style='font-size:12px;font-weight:700;color:#1a202c;white-space:nowrap;overflow:hidden;text-overflow:ellipsis'>{name}</div>"
-                    f"<div style='color:#4a5568;font-size:10px;margin:2px 0'>{sector} {icon}</div>"
-                    f"<div style='color:#2d3748;font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis'>{reason}</div>"
-                    f"</div>", unsafe_allow_html=True)
-                    f"<div style='color:#2d3748;font-size:10px;white-space:nowrap;"
-                    f"overflow:hidden;text-overflow:ellipsis'>{reason}</div>"
+                    f"<div style='background:{bg};border:2px solid {bd};border-radius:6px;padding:6px 8px;height:72px'>"
+                    f"<b style='font-size:13px;color:#1a202c'>{name}</b><br>"
+                    f"<span style='color:#4a5568;font-size:11px'>{sector} {icon}</span><br>"
+                    f"<span style='color:#2d3748;font-size:11px'>{reason}</span>"
                     f"</div>", unsafe_allow_html=True)
 
         if len(filtered) > 5:
