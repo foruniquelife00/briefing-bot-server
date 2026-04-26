@@ -98,7 +98,6 @@ def mark_alerted(name: str, today: str):
     log[name] = today
     save_alert_log(log)
 
-def send_telegram(message: str):
     url = f"https://api.telegram.org/bot{config.TELEGRAM_TOKEN}/sendMessage"
     try:
         requests.post(url, json={
@@ -166,7 +165,6 @@ def check_alerts():
             print(f"{name} 오류: {e}")
 
     for name, msg in alerts:
-        send_telegram(msg)
         mark_alerted(name, today)
         print(f"알림 발송: {name}")
 
