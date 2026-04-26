@@ -312,12 +312,11 @@ def run_event_detection():
     alert_msg = generate_action_plan(event, pattern)
     print(alert_msg)
 
-    # 텔레그램 + 카카오 발송
+    # 카카오 발송 (이벤트 감지는 카카오만)
     try:
-        from sender import send_telegram, send_kakao
-        send_telegram(alert_msg)
+        from sender import send_kakao
         send_kakao(alert_msg)
-        print("알림 발송 완료!")
+        print("카카오 알림 발송 완료!")
     except Exception as e:
         print(f"알림 발송 오류: {e}")
 

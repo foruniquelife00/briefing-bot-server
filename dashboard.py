@@ -53,9 +53,9 @@ with hc2:
     if st.button("🔄 갱신"):
         st.cache_data.clear(); st.rerun()
 
-tab1,tab2,tab3,tab4,tab5,tab6,tab7,tab8 = st.tabs([
+tab1,tab2,tab3,tab4,tab5,tab6,tab7 = st.tabs([
     "🌍 시장현황","📋 워치리스트","📰 브리핑히스토리",
-    "📐 신뢰도트렌드","💼 포트폴리오","⭐ 성과추적","🔬 백테스팅","🏠 부동산"
+    "📐 신뢰도트렌드","💼 포트폴리오","📊 성과 & 검증","🏠 부동산"
 ])
 
 # ── 공통 함수 ──────────────────────────────────
@@ -551,7 +551,9 @@ with tab4:
 # 탭5: 포트폴리오
 # ════════════════════════════════════════════
 with tab5:
-    # 추가/삭제 항상 오픈
+    # ════════════════════════════════════════════
+    # 탭5: 포트폴리오
+    # ════════════════════════════════════════════
     st.markdown("<div class='section-title'>⚙️ 종목 추가/삭제</div>", unsafe_allow_html=True)
     pa,pb,pc_,pd_ = st.columns([2,1,2,1])
     with pa:
@@ -620,8 +622,7 @@ with tab5:
         with lc:
             st.markdown("<div class='section-title'>📊 종목별 수익률</div>", unsafe_allow_html=True)
             fig = px.bar(df,x="종목",y="_rate",color="_rate",
-                color_continuous_scale=["#e53e3e","#38a169"],
-                labels={"_rate":"수익률(%)"})
+                color_continuous_scale=["#e53e3e","#38a169"],labels={"_rate":"수익률(%)"})
             fig.add_hline(y=0,line_dash="dash",line_color="#718096")
             fig.update_layout(height=200,margin=dict(l=5,r=5,t=5,b=5),
                 paper_bgcolor="rgba(0,0,0,0)",plot_bgcolor="#fafafa",
@@ -634,152 +635,148 @@ with tab5:
             fig2 = px.pie(df,values="_cur_val",names="종목")
             fig2.update_traces(textfont_size=12,textfont_color="#1a202c")
             fig2.update_layout(height=200,margin=dict(l=5,r=5,t=5,b=5),
-                paper_bgcolor="rgba(0,0,0,0)",
-                legend=dict(font=dict(size=12,color="#2d3748")))
+                paper_bgcolor="rgba(0,0,0,0)",legend=dict(font=dict(size=12,color="#2d3748")))
             st.plotly_chart(fig2,use_container_width=True)
 
         st.markdown("<div class='section-title'>📋 보유 종목 상세</div>", unsafe_allow_html=True)
         st.dataframe(df.drop(columns=["_rate","_invest","_cur_val"]),
             use_container_width=True,hide_index=True,height=180)
 
-# ════════════════════════════════════════════
-# 탭6: 성과 추적
-# ════════════════════════════════════════════
 with tab6:
-    try:
-        conn = sqlite3.connect("/root/briefing-bot/performance.db")
-        df = pd.read_sql(
-            "SELECT date, stock_name, ticker, buy_price, target_price, stop_loss FROM recommendations ORDER BY date DESC LIMIT 30",
-            conn)
-        conn.close()
-        if df.empty:
-            st.info("추천 종목 기록 없음")
+    # ════════════════════════════════════════════
+    # 탭6: 성과 & 검증 (성과추적 + 백테스팅 통합)
+    # ════════════════════════════════════════════
+
+    # 설명 박스
+    st.markdown(
+        "<div class='info-box'>"
+        "📊 <b>성과 추적</b>: AI가 추천한 종목의 현재 수익률을 실시간으로 확인합니다. "
+        "🔬 <b>백테스팅</b>: 과거 추천 종목이 목표가/손절가 기준으로 어떤 결과를 냈는지 검증합니다."
+        "</div>", unsafe_allow_html=True)
+
+    perf_tab, bt_tab = st.tabs(["📊 성과 추적", "🔬 백테스팅"])
+
+    with perf_tab:
+        try:
+            conn = sqlite3.connect("/root/briefing-bot/performance.db")
+            df = pd.read_sql(
+                "SELECT date, stock_name, ticker, buy_price, target_price, stop_loss FROM recommendations ORDER BY date DESC LIMIT 30",
+                conn)
+            conn.close()
+            if df.empty:
+                st.info("추천 종목 기록 없음. 브리핑이 실행되면 자동으로 쌓입니다.")
+            else:
+                @st.cache_data(ttl=300)
+                def get_prices_perf(tickers):
+                    prices = {}
+                    for t in tickers:
+                        try: prices[t] = yf.Ticker(t).fast_info.last_price
+                        except: prices[t] = None
+                    return prices
+
+                prices = get_prices_perf(tuple(df["ticker"].unique()))
+                rows = []
+                for _,row in df.iterrows():
+                    cur = prices.get(row["ticker"])
+                    if cur is None: continue
+                    rate = (cur-row["buy_price"])/row["buy_price"]*100
+                    is_kr = row["ticker"].endswith((".KS",".KQ"))
+                    fmt = lambda x: f"{int(x):,}원" if is_kr else f"${x:.2f}"
+                    if cur>=row["target_price"]: status="🎯 목표"
+                    elif cur<=row["stop_loss"]: status="🛑 손절"
+                    elif rate>=0: status="✅ 수익"
+                    else: status="⚠️ 손실"
+                    rows.append({"날짜":row["date"],"종목":row["stock_name"],
+                        "매수가":fmt(row["buy_price"]),"현재가":fmt(cur),
+                        "수익률":f"{rate:+.2f}%","목표가":fmt(row["target_price"]),
+                        "손절가":fmt(row["stop_loss"]),"상태":status,"_rate":rate})
+
+                if rows:
+                    avg = sum(r["_rate"] for r in rows)/len(rows)
+                    wins = sum(1 for r in rows if r["_rate"]>0)
+                    targets = sum(1 for r in rows if "목표" in r["상태"])
+                    stops = sum(1 for r in rows if "손절" in r["상태"])
+                    avg_color = "#38a169" if avg>=0 else "#e53e3e"
+
+                    st.markdown(
+                        f"<div class='stat-row'>"
+                        f"<div><span class='stat-item-label'>📊 평균 수익률 </span><span style='font-size:13px;font-weight:700;color:{avg_color}'>{avg:+.2f}%</span></div>"
+                        f"<div><span class='stat-item-label'>🎯 승률 </span><span class='stat-item-val'>{wins/len(rows)*100:.0f}%</span></div>"
+                        f"<div><span class='stat-item-label'>📋 총 추천 </span><span class='stat-item-val'>{len(rows)}건</span></div>"
+                        f"<div><span class='stat-item-label'>🏆 목표달성 </span><span style='font-size:13px;font-weight:700;color:#38a169'>{targets}건</span></div>"
+                        f"<div><span class='stat-item-label'>🛑 손절발생 </span><span style='font-size:13px;font-weight:700;color:#e53e3e'>{stops}건</span></div>"
+                        f"</div>", unsafe_allow_html=True)
+
+                    cdf = pd.DataFrame(rows)
+                    st.markdown("<div class='section-title'>📈 수익률 추이</div>", unsafe_allow_html=True)
+                    fig = px.bar(cdf,x="날짜",y="_rate",color="_rate",
+                        color_continuous_scale=["#e53e3e","#38a169"],labels={"_rate":"수익률(%)"})
+                    fig.add_hline(y=0,line_dash="dash",line_color="#718096")
+                    fig.update_layout(height=200,margin=dict(l=5,r=5,t=5,b=5),
+                        paper_bgcolor="rgba(0,0,0,0)",plot_bgcolor="#fafafa",
+                        coloraxis_showscale=False,
+                        xaxis=dict(tickfont=dict(size=11,color="#2d3748")),
+                        yaxis=dict(tickfont=dict(size=11,color="#2d3748"),gridcolor="#e2e8f0"))
+                    st.plotly_chart(fig,use_container_width=True)
+                    st.dataframe(cdf.drop(columns=["_rate"]),use_container_width=True,hide_index=True,height=200)
+        except Exception as e: st.error(f"오류: {e}")
+
+    with bt_tab:
+        if st.button("🔬 백테스팅 실행"):
+            with st.spinner("분석 중..."):
+                from backtest import run_backtest, save_backtest_to_db
+                bt = run_backtest(); save_backtest_to_db(bt)
+                st.session_state["bt"] = bt
+
+        bt = st.session_state.get("bt")
+        if not bt:
+            from backtest import run_backtest
+            bt = run_backtest()
+            st.session_state["bt"] = bt
+
+        if "error" in bt:
+            st.info(bt["error"])
         else:
-            @st.cache_data(ttl=300)
-            def get_prices_t6(tickers):
-                prices = {}
-                for t in tickers:
-                    try: prices[t] = yf.Ticker(t).fast_info.last_price
-                    except: prices[t] = None
-                return prices
+            avg_color = "#38a169" if bt["avg_rate"]>=0 else "#e53e3e"
+            st.markdown(
+                f"<div class='stat-row'>"
+                f"<div><span class='stat-item-label'>📋 대상 </span><span class='stat-item-val'>{bt['total']}건</span></div>"
+                f"<div><span class='stat-item-label'>📊 평균 수익률 </span><span style='font-size:13px;font-weight:700;color:{avg_color}'>{bt['avg_rate']:+.2f}%</span></div>"
+                f"<div><span class='stat-item-label'>🎯 승률 </span><span class='stat-item-val'>{bt['win_rate']:.0f}%</span></div>"
+                f"<div><span class='stat-item-label'>🏆 목표달성 </span><span style='font-size:13px;font-weight:700;color:#38a169'>{bt['target_hits']}건</span></div>"
+                f"<div><span class='stat-item-label'>🛑 손절발생 </span><span style='font-size:13px;font-weight:700;color:#e53e3e'>{bt['stop_hits']}건</span></div>"
+                f"</div>", unsafe_allow_html=True)
 
-            prices = get_prices_t6(tuple(df["ticker"].unique()))
-            rows = []
-            for _,row in df.iterrows():
-                cur = prices.get(row["ticker"])
-                if cur is None: continue
-                rate = (cur-row["buy_price"])/row["buy_price"]*100
-                is_kr = row["ticker"].endswith((".KS",".KQ"))
-                fmt = lambda x: f"{int(x):,}원" if is_kr else f"${x:.2f}"
-                if cur>=row["target_price"]: status="🎯 목표"
-                elif cur<=row["stop_loss"]: status="🛑 손절"
-                elif rate>=0: status="✅ 수익"
-                else: status="⚠️ 손실"
-                rows.append({"날짜":row["date"],"종목":row["stock_name"],
-                    "매수가":fmt(row["buy_price"]),"현재가":fmt(cur),
-                    "수익률":f"{rate:+.2f}%","목표가":fmt(row["target_price"]),
-                    "손절가":fmt(row["stop_loss"]),"상태":status,"_rate":rate})
-
-            if rows:
-                avg = sum(r["_rate"] for r in rows)/len(rows)
-                wins = sum(1 for r in rows if r["_rate"]>0)
-                targets = sum(1 for r in rows if "목표" in r["상태"])
-                stops = sum(1 for r in rows if "손절" in r["상태"])
-                avg_color = "#38a169" if avg>=0 else "#e53e3e"
-
-                st.markdown(
-                    f"<div class='stat-row'>"
-                    f"<div><span class='stat-item-label'>📊 평균 수익률 </span><span style='font-size:13px;font-weight:700;color:{avg_color}'>{avg:+.2f}%</span></div>"
-                    f"<div><span class='stat-item-label'>🎯 승률 </span><span class='stat-item-val'>{wins/len(rows)*100:.0f}%</span></div>"
-                    f"<div><span class='stat-item-label'>📋 총 추천 </span><span class='stat-item-val'>{len(rows)}건</span></div>"
-                    f"<div><span class='stat-item-label'>🏆 목표달성 </span><span style='font-size:13px;font-weight:700;color:#38a169'>{targets}건</span></div>"
-                    f"<div><span class='stat-item-label'>🛑 손절발생 </span><span style='font-size:13px;font-weight:700;color:#e53e3e'>{stops}건</span></div>"
-                    f"</div>", unsafe_allow_html=True)
-
-                cdf = pd.DataFrame(rows)
-                st.markdown("<div class='section-title'>📈 수익률 추이</div>", unsafe_allow_html=True)
-                fig = px.bar(cdf,x="날짜",y="_rate",color="_rate",
-                    color_continuous_scale=["#e53e3e","#38a169"],
-                    labels={"_rate":"수익률(%)"})
+            lc,rc = st.columns(2)
+            with lc:
+                st.markdown("<div class='section-title'>📈 백테스팅 수익률</div>", unsafe_allow_html=True)
+                df = pd.DataFrame(bt["results"])
+                fig = px.bar(df,x="date",y="rate",color="rate",
+                    color_continuous_scale=["#e53e3e","#38a169"],labels={"rate":"수익률(%)"})
                 fig.add_hline(y=0,line_dash="dash",line_color="#718096")
-                fig.update_layout(height=200,margin=dict(l=5,r=5,t=5,b=5),
+                fig.update_layout(height=220,margin=dict(l=5,r=5,t=5,b=5),
                     paper_bgcolor="rgba(0,0,0,0)",plot_bgcolor="#fafafa",
                     coloraxis_showscale=False,
                     xaxis=dict(tickfont=dict(size=11,color="#2d3748")),
                     yaxis=dict(tickfont=dict(size=11,color="#2d3748"),gridcolor="#e2e8f0"))
                 st.plotly_chart(fig,use_container_width=True)
-                st.dataframe(cdf.drop(columns=["_rate"]),use_container_width=True,hide_index=True,height=200)
-    except Exception as e: st.error(f"오류: {e}")
+            with rc:
+                st.markdown("<div class='section-title'>🥧 결과 분포</div>", unsafe_allow_html=True)
+                oc = pd.DataFrame(bt["results"])["outcome"].value_counts()
+                fig2 = px.pie(values=oc.values,names=oc.index,color=oc.index,
+                    color_discrete_map={"목표달성":"#68d391","수익중":"#63b3ed","손실중":"#fc8181","손절":"#e53e3e"})
+                fig2.update_traces(textfont_size=12,textfont_color="#1a202c")
+                fig2.update_layout(height=220,margin=dict(l=5,r=5,t=5,b=5),
+                    paper_bgcolor="rgba(0,0,0,0)",legend=dict(font=dict(size=11,color="#2d3748")))
+                st.plotly_chart(fig2,use_container_width=True)
 
-# ════════════════════════════════════════════
-# 탭7: 백테스팅
-# ════════════════════════════════════════════
+            st.dataframe(pd.DataFrame([{
+                "날짜":r["date"],"종목":r["name"],"매수가":r["buy_str"],
+                "현재가":r["current_str"],"수익률":f"{r['rate']:+.2f}%",
+                "결과":f"{r['outcome_icon']} {r['outcome']}","보유일":f"{r['hold_days']}일"
+            } for r in bt["results"]]),use_container_width=True,hide_index=True,height=200)
+
 with tab7:
-    st.markdown(
-        "<div class='info-box'>🔬 <b>백테스팅이란?</b> 과거에 추천했던 종목들이 실제로 얼마나 수익을 냈는지 검증하는 시뮬레이션입니다. "
-        "목표가 달성 또는 손절가 이탈 시점을 기준으로 결과를 산출합니다.</div>",
-        unsafe_allow_html=True)
-
-    if st.button("🔬 백테스팅 실행"):
-        with st.spinner("분석 중..."):
-            from backtest import run_backtest, save_backtest_to_db
-            bt = run_backtest(); save_backtest_to_db(bt)
-            st.session_state["bt"] = bt
-
-    bt = st.session_state.get("bt")
-    if not bt:
-        from backtest import run_backtest
-        bt = run_backtest()
-        st.session_state["bt"] = bt
-
-    if "error" in bt:
-        st.info(bt["error"])
-    else:
-        avg_color = "#38a169" if bt["avg_rate"]>=0 else "#e53e3e"
-        st.markdown(
-            f"<div class='stat-row'>"
-            f"<div><span class='stat-item-label'>📋 백테스팅 대상 </span><span class='stat-item-val'>{bt['total']}건</span></div>"
-            f"<div><span class='stat-item-label'>📊 평균 수익률 </span><span style='font-size:13px;font-weight:700;color:{avg_color}'>{bt['avg_rate']:+.2f}%</span></div>"
-            f"<div><span class='stat-item-label'>🎯 승률 </span><span class='stat-item-val'>{bt['win_rate']:.0f}%</span></div>"
-            f"<div><span class='stat-item-label'>🏆 목표달성 </span><span style='font-size:13px;font-weight:700;color:#38a169'>{bt['target_hits']}건</span></div>"
-            f"<div><span class='stat-item-label'>🛑 손절발생 </span><span style='font-size:13px;font-weight:700;color:#e53e3e'>{bt['stop_hits']}건</span></div>"
-            f"</div>", unsafe_allow_html=True)
-
-        lc,rc = st.columns(2)
-        with lc:
-            st.markdown("<div class='section-title'>📈 백테스팅 수익률</div>", unsafe_allow_html=True)
-            df = pd.DataFrame(bt["results"])
-            fig = px.bar(df,x="date",y="rate",color="rate",
-                color_continuous_scale=["#e53e3e","#38a169"],labels={"rate":"수익률(%)"})
-            fig.add_hline(y=0,line_dash="dash",line_color="#718096")
-            fig.update_layout(height=220,margin=dict(l=5,r=5,t=5,b=5),
-                paper_bgcolor="rgba(0,0,0,0)",plot_bgcolor="#fafafa",
-                coloraxis_showscale=False,
-                xaxis=dict(tickfont=dict(size=11,color="#2d3748")),
-                yaxis=dict(tickfont=dict(size=11,color="#2d3748"),gridcolor="#e2e8f0"))
-            st.plotly_chart(fig,use_container_width=True)
-        with rc:
-            st.markdown("<div class='section-title'>🥧 결과 분포</div>", unsafe_allow_html=True)
-            oc = pd.DataFrame(bt["results"])["outcome"].value_counts()
-            fig2 = px.pie(values=oc.values,names=oc.index,
-                color=oc.index,
-                color_discrete_map={"목표달성":"#68d391","수익중":"#63b3ed","손실중":"#fc8181","손절":"#e53e3e"})
-            fig2.update_traces(textfont_size=12,textfont_color="#1a202c")
-            fig2.update_layout(height=220,margin=dict(l=5,r=5,t=5,b=5),
-                paper_bgcolor="rgba(0,0,0,0)",
-                legend=dict(font=dict(size=11,color="#2d3748")))
-            st.plotly_chart(fig2,use_container_width=True)
-
-        st.dataframe(pd.DataFrame([{
-            "날짜":r["date"],"종목":r["name"],"매수가":r["buy_str"],
-            "현재가":r["current_str"],"수익률":f"{r['rate']:+.2f}%",
-            "결과":f"{r['outcome_icon']} {r['outcome']}","보유일":f"{r['hold_days']}일"
-        } for r in bt["results"]]),use_container_width=True,hide_index=True,height=200)
-
-# ════════════════════════════════════════════
-# 탭8: 부동산
-# ════════════════════════════════════════════
-with tab8:
     metro_codes = {
         "서울":["11110","11140","11170","11200","11215","11230","11260","11290","11305","11320","11350","11380","11410","11440","11470","11500","11530","11545","11560","11590","11620","11650","11680","11710","11740"],
         "부산":["26110","26140","26170","26200","26230","26260","26290","26320","26350","26380","26410","26440","26470","26500","26530"],
