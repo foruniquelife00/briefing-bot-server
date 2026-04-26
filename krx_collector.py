@@ -198,3 +198,97 @@ def run_daily_collection():
 
 if __name__ == "__main__":
     run_daily_collection()
+
+
+
+
+def get_krx_daily_trade(market="kospi"):
+    """KRX OpenAPI - 일별매매정보 (종가·등락률·거래량·시가총액)"""
+    import requests as req
+    import config
+    from datetime import datetime, timedelta
+
+    api_map = {
+        "kospi":  "https://data-dbg.krx.co.kr/svc/apis/sto/stk_bydd_trd",
+        "kosdaq": "https://data-dbg.krx.co.kr/svc/apis/sto/ksq_bydd_trd",
+    }
+    url = api_map.get(market, api_map["kospi"])
+
+    today = datetime.now()
+    bas_dd = today.strftime("%Y%m%d")
+    for i in range(1, 5):
+        d = today - timedelta(days=i)
+        if d.weekday() < 5:
+            bas_dd = d.strftime("%Y%m%d")
+            break
+
+    headers = {"AUTH_KEY": config.KRX_API_KEY}
+    params  = {"basDd": bas_dd}
+
+    try:
+        res   = req.get(url, params=params, headers=headers, timeout=10)
+        items = res.json().get("OutBlock_1", [])
+        result = {}
+        for item in items:
+            code = item.get("ISU_CD", "")  # "005930" 형태
+            result[code] = {
+                "name":   item.get("ISU_NM",""),
+                "close":  item.get("TDD_CLSPRC",""),
+                "chg":    item.get("CMPPREVDD_PRC",""),
+                "chg_rt": item.get("FLUC_RT",""),
+                "volume": item.get("ACC_TRDVOL",""),
+                "value":  item.get("ACC_TRDVAL",""),
+                "mktcap": item.get("MKTCAP",""),
+                "open":   item.get("TDD_OPNPRC",""),
+                "high":   item.get("TDD_HGPRC",""),
+                "low":    item.get("TDD_LWPRC",""),
+            }
+        print(f"KRX {market.upper()} 일별매매정보: {len(result)}건 ({bas_dd})")
+        return result
+    except Exception as e:
+        print(f"KRX 일별매매정보 오류: {e}")
+        return {}
+
+
+def get_krx_stock_meta(market="kospi"):
+    """KRX OpenAPI - 종목기본정보 (상장일·액면가·상장주식수)"""
+    import requests as req
+    import config
+    from datetime import datetime, timedelta
+
+    api_map = {
+        "kospi":  "https://data-dbg.krx.co.kr/svc/apis/sto/stk_isu_base_info",
+        "kosdaq": "https://data-dbg.krx.co.kr/svc/apis/sto/ksq_isu_base_info",
+    }
+    url = api_map.get(market, api_map["kospi"])
+
+    today = datetime.now()
+    bas_dd = today.strftime("%Y%m%d")
+    for i in range(1, 5):
+        d = today - timedelta(days=i)
+        if d.weekday() < 5:
+            bas_dd = d.strftime("%Y%m%d")
+            break
+
+    headers = {"AUTH_KEY": config.KRX_API_KEY}
+    params  = {"basDd": bas_dd}
+
+    try:
+        res   = req.get(url, params=params, headers=headers, timeout=10)
+        items = res.json().get("OutBlock_1", [])
+        result = {}
+        for item in items:
+            code = item.get("ISU_SRT_CD", "")
+            result[code] = {
+                "name":     item.get("ISU_ABBRV",""),
+                "full_nm":  item.get("ISU_NM",""),
+                "list_dd":  item.get("LIST_DD",""),
+                "mkt":      item.get("MKT_TP_NM",""),
+                "parval":   item.get("PARVAL",""),
+                "list_shrs":item.get("LIST_SHRS",""),
+            }
+        print(f"KRX {market.upper()} 종목메타: {len(result)}건")
+        return result
+    except Exception as e:
+        print(f"KRX 종목메타 오류: {e}")
+        return {}
