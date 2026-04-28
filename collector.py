@@ -194,6 +194,23 @@ def get_market_data() -> dict:
     data["stocks"]         = all_stocks      # 전체 (대시보드·시세 조회용)
     data["top_candidates"] = top_candidates  # 필터링된 후보 (브리핑 추천용)
 
+
+    # KRX 시장 강도 분석
+    try:
+        from krx_analyzer import run_krx_analysis
+        krx_result = run_krx_analysis()
+        data["krx_summary"]    = krx_result["summary"]
+        data["krx_candidates"] = krx_result["candidates"][:5]
+        data["krx_signal"]     = krx_result["analysis"]["signal"]
+        data["krx_strength"]   = krx_result["analysis"]["overall_strength"]
+        print(f"KRX 분석 완료 ({data['krx_signal']})")
+    except Exception as e:
+        print(f"KRX 분석 오류: {e}")
+        data["krx_summary"]    = ""
+        data["krx_candidates"] = []
+        data["krx_signal"]     = ""
+        data["krx_strength"]   = 0
+
     return data
 
 if __name__ == "__main__":

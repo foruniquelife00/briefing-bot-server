@@ -83,6 +83,23 @@ def analyze(market_data: dict) -> str:
 
     context = build_context_prompt(3)
 
+    # KRX 시장 강도 섹션
+    krx_summary    = market_data.get("krx_summary", "")
+    krx_signal     = market_data.get("krx_signal", "")
+    krx_strength   = market_data.get("krx_strength", 0)
+    krx_candidates = market_data.get("krx_candidates", [])
+
+    if krx_summary:
+        cand_text = ""
+        if krx_candidates:
+            cand_text = "\n스윙 후보 TOP3:\n" + "\n".join([
+                f"  - {c['name']} ({c['chg_rt']:+.1f}%) | {' · '.join(c['signals'][:3])}"
+                for c in krx_candidates[:3]
+            ])
+        krx_section = f"시장신호: {krx_signal} (강도 {krx_strength:.1f}%)\n{cand_text}"
+    else:
+        krx_section = "KRX 데이터 없음"
+
     # 외국인 신호 추가
     try:
         from krx_collector import get_foreign_signal_summary
@@ -113,6 +130,9 @@ def analyze(market_data: dict) -> str:
 
 ## 🎯 앙상블 신호
 {ensemble_text}
+
+## 📊 KRX 시장 강도 분석
+{krx_section}
 
 ## 📊 주요 지수 (전일 종가)
 - S&P 500:  {market_data['sp500']['value']}  ({market_data['sp500']['rate']})
