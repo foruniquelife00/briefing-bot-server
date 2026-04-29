@@ -201,11 +201,14 @@ def run_briefing():
     try:
         from collector  import get_market_data
         from analyzer   import analyze_and_save
-        from sender     import send_telegram
-        data = get_market_data()
-        msg  = analyze_and_save(data)
-        ok   = send_telegram(msg)
-        logging.info(f"브리핑 {'성공' if ok else '실패'}")
+        from sender     import send_telegram, send_email
+        from datetime   import datetime as dt
+        data    = get_market_data()
+        msg     = analyze_and_save(data)
+        tg_ok   = send_telegram(msg)
+        subject = f"📊 투자 브리핑 | {dt.now().strftime('%Y-%m-%d (%a)')}"
+        em_ok   = send_email(subject, msg)
+        logging.info(f"브리핑 텔레그램={'성공' if tg_ok else '실패'} / 이메일={'성공' if em_ok else '실패'}")
     except Exception as e:
         logging.error(f"브리핑 오류: {e}")
 
