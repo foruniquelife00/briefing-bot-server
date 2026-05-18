@@ -3,8 +3,9 @@ import yfinance as yf
 from datetime import datetime, timezone
 import re
 import os
+import config
 
-DB_PATH = "/root/briefing-bot/performance.db"
+DB_PATH = config.DB_PATH
 
 def init_db():
     conn = sqlite3.connect(DB_PATH)
@@ -40,31 +41,55 @@ def extract_recommendation(briefing_text: str, stocks: dict) -> dict:
     from watchlist import STOCK_MAP
 
     result = {}
+    search_text = briefing_text
 
-    # 종목명 찾기
-    for name in stocks:
-        if name in briefing_text:
+    section_match = re.search(
+        r"(?:오늘의\s*)?추천\s*종목.*?(?=\n\s*\d+\.|\n[^\n]{0,20}매매\s*타이밍|\Z)",
+        briefing_text,
+        re.DOTALL,
+    )
+    if section_match:
+        search_text = section_match.group(0)
+
+    # 종목명 찾기: 추천 섹션을 우선 보고, 긴 이름부터 매칭한다.
+    candidate_names = sorted(set(stocks) | set(STOCK_MAP), key=len, reverse=True)
+    for name in candidate_names:
+        if name and name in search_text:
             result["stock_name"] = name
-            result["ticker"]     = STOCK_MAP.get(name, "")
+            result["ticker"] = STOCK_MAP.get(name, stocks.get(name, {}).get("ticker", ""))
             break
 
     if not result:
         return {}
 
-    # 현재가 추출
-    price_pattern    = r'현재가[:\s]*([0-9,]+(?:\.[0-9]+)?)'
-    target_pattern   = r'목표가[:\s]*([0-9,]+(?:\.[0-9]+)?)'
-    stoploss_pattern = r'손절가[:\s]*([0-9,]+(?:\.[0-9]+)?)'
+    def extract_num(labels: list[str], text: str) -> float | None:
+        label_pattern = "|".join(re.escape(label) for label in labels)
+        pattern = rf"(?:{label_pattern})\s*[:：]?\s*(?:\$|약\s*)?([0-9][0-9,]*(?:\.[0-9]+)?)"
+        m = re.search(pattern, text, re.IGNORECASE)
+        if not m:
+            return None
+        value = float(m.group(1).replace(",", ""))
+        if "만원" in text[m.start():m.end() + 5]:
+            value *= 10000
+        return value
 
-    def extract_num(pattern, text):
-        m = re.search(pattern, text)
-        if m:
-            return float(m.group(1).replace(",", ""))
+    def fallback_price(field: str) -> float | None:
+        stock_data = stocks.get(result["stock_name"], {})
+        value = stock_data.get(field)
+        if isinstance(value, (int, float)):
+            return float(value)
+        if isinstance(value, str):
+            m = re.search(r"([0-9][0-9,]*(?:\.[0-9]+)?)", value)
+            if m:
+                return float(m.group(1).replace(",", ""))
         return None
 
-    result["buy_price"]    = extract_num(price_pattern,    briefing_text)
-    result["target_price"] = extract_num(target_pattern,   briefing_text)
-    result["stop_loss"]    = extract_num(stoploss_pattern, briefing_text)
+    result["buy_price"] = (
+        extract_num(["현재가", "매수가", "매수 구간"], search_text)
+        or fallback_price("raw_price")
+    )
+    result["target_price"] = extract_num(["목표가", "목표 가격"], search_text)
+    result["stop_loss"] = extract_num(["손절가", "손절 가격"], search_text)
 
     return result
 

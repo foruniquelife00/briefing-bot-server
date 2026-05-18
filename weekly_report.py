@@ -267,6 +267,5 @@ def send_friday_report():
         result = send_all(msg, subject=f"📊 주간 결산 & 다음 주 예측 {today}")
         print(f"텔레그램: {'✅' if result['telegram'] else '❌'}")
         print(f"이메일:   {'✅' if result['email'] else '❌'}")
-        print(f"카카오:   {'✅' if result.get('kakao') else '❌'}")
     except Exception as e:
         print(f"금요일 리포트 오류: {e}")
