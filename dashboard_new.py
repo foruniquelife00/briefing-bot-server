@@ -7,7 +7,7 @@ import plotly.express as px
 import requests
 from datetime import datetime, timezone, timedelta
 import sys
-sys.path.append("/root/briefing-bot")
+import config
 from watchlist import STOCK_MAP, load_watchlist
 from eco_calendar import get_this_week_events
 
@@ -302,7 +302,7 @@ with tab3:
         if st.button("🔄 갱신", key="t3r"):
             st.cache_data.clear(); st.rerun()
     try:
-        conn = sqlite3.connect("/root/briefing-bot/performance.db")
+        conn = sqlite3.connect(config.DB_PATH)
         recs = pd.read_sql(
             "SELECT date, stock_name, ticker, buy_price, target_price, stop_loss FROM recommendations ORDER BY date DESC LIMIT 30",
             conn)
@@ -337,7 +337,7 @@ with tab4:
         if st.button("🔄 갱신", key="t4r"):
             st.cache_data.clear(); st.rerun()
     try:
-        conn = sqlite3.connect("/root/briefing-bot/performance.db")
+        conn = sqlite3.connect(config.DB_PATH)
         tables = [r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()]
         hist_df = pd.read_sql(
             "SELECT date, weekday, trust_score, recommended, fgi_score, kospi, sp500 FROM briefing_history ORDER BY date ASC",
@@ -471,7 +471,7 @@ with tab6:
         if st.button("🔄 갱신", key="t6r"):
             st.cache_data.clear(); st.rerun()
     try:
-        conn = sqlite3.connect("/root/briefing-bot/performance.db")
+        conn = sqlite3.connect(config.DB_PATH)
         df = pd.read_sql(
             "SELECT date, stock_name, ticker, buy_price, target_price, stop_loss FROM recommendations ORDER BY date DESC LIMIT 30",
             conn)

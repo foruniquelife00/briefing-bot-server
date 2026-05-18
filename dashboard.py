@@ -8,7 +8,7 @@ import requests
 import re
 from datetime import datetime, timezone, timedelta
 import sys
-sys.path.append("/root/briefing-bot")
+import config
 from watchlist import STOCK_MAP, load_watchlist
 from eco_calendar import get_this_week_events
 
@@ -127,7 +127,7 @@ def get_wl_prices():
 @st.cache_data(ttl=1800)
 def get_daily_summary():
     try:
-        conn = sqlite3.connect("/root/briefing-bot/performance.db")
+        conn = sqlite3.connect(config.DB_PATH)
         today = datetime.now(KST).strftime("%Y-%m-%d")
         row = conn.execute(
             "SELECT briefing_text FROM briefing_history WHERE date=? ORDER BY rowid DESC LIMIT 1",
@@ -385,7 +385,7 @@ with tab2:
 # ════════════════════════════════════════════
 with tab3:
     try:
-        conn = sqlite3.connect("/root/briefing-bot/performance.db")
+        conn = sqlite3.connect(config.DB_PATH)
         tables = [r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()]
         if "briefing_history" in tables:
             hist = pd.read_sql(
@@ -466,7 +466,7 @@ with tab3:
 # ════════════════════════════════════════════
 with tab4:
     try:
-        conn = sqlite3.connect("/root/briefing-bot/performance.db")
+        conn = sqlite3.connect(config.DB_PATH)
         tables = [r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()]
         hist_df = pd.read_sql(
             "SELECT date, weekday, trust_score, recommended, fgi_score, kospi, sp500 FROM briefing_history ORDER BY date ASC",
@@ -575,7 +575,7 @@ with tab5:
                 st.cache_data.clear(); st.rerun()
 
     try:
-        conn2 = sqlite3.connect("/root/briefing-bot/performance.db")
+        conn2 = sqlite3.connect(config.DB_PATH)
         pf_names = [r[0] for r in conn2.execute("SELECT stock_name FROM portfolio ORDER BY stock_name").fetchall()]
         conn2.close()
     except: pf_names = []
@@ -658,7 +658,7 @@ with tab6:
 
     with perf_tab:
         try:
-            conn = sqlite3.connect("/root/briefing-bot/performance.db")
+            conn = sqlite3.connect(config.DB_PATH)
             df = pd.read_sql(
                 "SELECT date, stock_name, ticker, buy_price, target_price, stop_loss FROM recommendations ORDER BY date DESC LIMIT 30",
                 conn)

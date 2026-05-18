@@ -3,7 +3,8 @@ KRX 데이터 기반 시장 강도 분석 + 스윙 추천 신호
 매일 브리핑 전 실행 → analyzer.py에 컨텍스트 주입
 """
 import sys
-sys.path.append('/root/briefing-bot')
+from pathlib import Path
+sys.path.append(str(Path(__file__).resolve().parent))
 
 def analyze_market(items_kospi: list, items_kosdaq: list) -> dict:
     """전종목 데이터로 시장 강도 분석"""

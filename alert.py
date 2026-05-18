@@ -2,12 +2,14 @@ import yfinance as yf
 import requests
 import json
 import os
+from pathlib import Path
 from datetime import datetime, timezone, timedelta
 import config
 from watchlist import load_watchlist, STOCK_MAP
 
-ALERT_LOG_FILE      = "/root/briefing-bot/alert_log.json"
-ALERT_SETTINGS_FILE = "/root/briefing-bot/alert_settings.json"
+BASE_DIR = Path(__file__).resolve().parent
+ALERT_LOG_FILE      = str(BASE_DIR / "alert_log.json")
+ALERT_SETTINGS_FILE = str(BASE_DIR / "alert_settings.json")
 DEFAULT_THRESHOLD   = 3.0  # 기본 임계값 3%
 
 def load_alert_log() -> dict:

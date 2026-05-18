@@ -1,13 +1,15 @@
 import json
 import os
+from pathlib import Path
 import yfinance as yf
 import anthropic
 import config
 from datetime import datetime, timezone, timedelta
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-AI_WATCHLIST_FILE   = "/root/briefing-bot/ai_watchlist.json"
-USER_WATCHLIST_FILE = "/root/briefing-bot/watchlist.json"
+BASE_DIR = Path(__file__).resolve().parent
+AI_WATCHLIST_FILE   = str(BASE_DIR / "ai_watchlist.json")
+USER_WATCHLIST_FILE = str(BASE_DIR / "watchlist.json")
 MAX_AI_STOCKS       = 50
 
 client = anthropic.Anthropic(api_key=config.ANTHROPIC_API_KEY)

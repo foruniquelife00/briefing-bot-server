@@ -2,6 +2,7 @@ import schedule
 import time
 import logging
 from datetime import datetime, timezone
+from pathlib import Path
 
 from collector    import get_market_data
 from analyzer     import analyze_and_save
@@ -9,7 +10,7 @@ from sender       import send_telegram
 from alert        import check_alerts
 
 logging.basicConfig(
-    filename="/root/briefing-bot/briefing.log",
+    filename=str(Path(__file__).resolve().parent / "briefing.log"),
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
 )

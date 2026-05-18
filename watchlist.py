@@ -1,8 +1,9 @@
 import json
 import os
+from pathlib import Path
 import yfinance as yf
 
-WATCHLIST_FILE = "/root/briefing-bot/watchlist.json"
+WATCHLIST_FILE = str(Path(__file__).resolve().parent / "watchlist.json")
 
 # ── 전체 종목 DB ──────────────────────────────────────────
 

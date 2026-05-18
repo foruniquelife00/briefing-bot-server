@@ -1,0 +1,12 @@
+anthropic
+beautifulsoup4
+finance-datareader
+lxml
+numpy
+openai
+pandas
+plotly
+requests
+schedule
+streamlit
+yfinance

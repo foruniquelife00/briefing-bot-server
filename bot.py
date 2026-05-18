@@ -4,6 +4,7 @@ import logging
 from datetime import datetime, timezone, timedelta
 import threading
 import schedule
+from pathlib import Path
 
 import config
 from watchlist import (
@@ -11,8 +12,10 @@ from watchlist import (
     get_stock_price, get_available_stocks
 )
 
+BASE_DIR = Path(__file__).resolve().parent
+
 logging.basicConfig(
-    filename="/root/briefing-bot/briefing.log",
+    filename=str(BASE_DIR / "briefing.log"),
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
 )
@@ -286,13 +289,13 @@ def run_git_backup():
         from datetime import datetime, timezone, timedelta
         kst  = datetime.now(timezone(timedelta(hours=9)))
         date = kst.strftime("%Y-%m-%d %H:%M")
-        subprocess.run(["git", "-C", "/root/briefing-bot", "add", "."], check=True)
+        subprocess.run(["git", "-C", str(BASE_DIR), "add", "."], check=True)
         result = subprocess.run(
-            ["git", "-C", "/root/briefing-bot", "commit", "-m", f"🤖 자동 백업: {date}"],
+            ["git", "-C", str(BASE_DIR), "commit", "-m", f"🤖 자동 백업: {date}"],
             capture_output=True, text=True
         )
         if "nothing to commit" not in result.stdout:
-            subprocess.run(["git", "-C", "/root/briefing-bot", "push"], check=True)
+            subprocess.run(["git", "-C", str(BASE_DIR), "push"], check=True)
             logging.info("GitHub 백업 완료")
         else:
             logging.info("GitHub 백업: 변경사항 없음")
@@ -397,7 +400,7 @@ from watchlist import (
 )
 
 logging.basicConfig(
-    filename="/root/briefing-bot/briefing.log",
+    filename=str(BASE_DIR / "briefing.log"),
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
 )
