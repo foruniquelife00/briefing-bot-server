@@ -37,9 +37,6 @@ HELP_MSG = """안녕하세요! 투자 브리핑 봇입니다 📊
   /성과 — 이번 주 추천 종목 성과
   /누적성과 — 최근 20일 누적 성과
 
-🏠 부동산
-  /서울 /부산 /대구 /대전 /울산
-
 ❓ /help — 도움말"""
 
 
@@ -56,9 +53,13 @@ def get_updates(offset=None):
         return []
 
 
+_BOT_HEADER = "📰 [브리핑봇]\n"   # briefing-bot-server 식별 헤더
+
+
 def send_message(chat_id: int, text: str):
     try:
-        chunks = [text[i:i+4000] for i in range(0, len(text), 4000)]
+        tagged = _BOT_HEADER + text
+        chunks = [tagged[i:i+4000] for i in range(0, len(tagged), 4000)]
         for chunk in chunks:
             requests.post(f"{BASE_URL}/sendMessage", json={
                 "chat_id": chat_id,
@@ -106,28 +107,6 @@ def handle_message(chat_id: int, text: str):
     if text == "/누적성과":
         from performance import get_all_performance
         send_message(chat_id, get_all_performance())
-        return
-
-    CITY_MAP = {
-        "/서울": "서울", "/부산": "부산",
-        "/대구": "대구", "/대전": "대전", "/울산": "울산",
-    }
-    if text in CITY_MAP:
-        city = CITY_MAP[text]
-        send_message(chat_id, f"🔍 {city} 부동산 데이터 조회 중...")
-        try:
-            import sys
-            sys.path.append("/root/realestate-bot")
-            from step2_collector import collect_metro
-            from step3_notice    import build_notice
-            last    = datetime.now(timezone.utc).replace(day=1) - timedelta(days=1)
-            deal_ym = last.strftime("%Y%m")
-            data    = collect_metro(city, deal_ym)
-            msg     = build_notice(data)
-            send_message(chat_id, msg)
-        except Exception as e:
-            logging.error(f"부동산 오류: {e}")
-            send_message(chat_id, "⚠️ 부동산 데이터 조회 중 오류가 발생했어요.")
         return
 
     if text == "/알림목록":
@@ -332,11 +311,6 @@ def main():
         {"command": "종목목록", "description": "추가 가능한 전체 종목"},
         {"command": "성과",     "description": "이번 주 성과"},
         {"command": "누적성과", "description": "최근 20일 누적 성과"},
-        {"command": "서울",     "description": "서울 부동산 실거래가"},
-        {"command": "부산",     "description": "부산 부동산 실거래가"},
-        {"command": "대구",     "description": "대구 부동산 실거래가"},
-        {"command": "대전",     "description": "대전 부동산 실거래가"},
-        {"command": "울산",     "description": "울산 부동산 실거래가"},
         {"command": "help",     "description": "도움말"},
     ]
     try:
@@ -421,9 +395,6 @@ HELP_MSG = """안녕하세요! 투자 브리핑 봇입니다 📊
 📊 성과 확인
   /성과 — 이번 주 추천 종목 성과
   /누적성과 — 최근 20일 누적 성과
-
-🏠 부동산
-  /서울 /부산 /대구 /대전 /울산
 
 ❓ /help — 도움말"""
 

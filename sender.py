@@ -8,11 +8,14 @@ import requests
 
 import config
 
+_BOT_HEADER = "📰 [브리핑봇]\n"   # briefing-bot-server 식별 헤더
+
 
 def send_telegram(message: str) -> bool:
     url = f"https://api.telegram.org/bot{config.TELEGRAM_TOKEN}/sendMessage"
-    chunks = [message[i:i + 4000] for i in range(0, len(message), 4000)]
-
+    # 텔레그램 최대 4096자 제한으로 분할 발송
+    tagged  = _BOT_HEADER + message
+    chunks = [tagged[i:i+4000] for i in range(0, len(tagged), 4000)]
     for chunk in chunks:
         try:
             res = requests.post(

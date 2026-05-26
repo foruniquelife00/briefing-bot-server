@@ -53,9 +53,10 @@ with hc2:
     if st.button("🔄 갱신"):
         st.cache_data.clear(); st.rerun()
 
-tab1,tab2,tab3,tab4,tab5,tab6,tab7 = st.tabs([
+tab1,tab2,tab3,tab4,tab5,tab6,tab7,tab8 = st.tabs([
     "🌍 시장현황","📋 워치리스트","📰 브리핑히스토리",
-    "📐 신뢰도트렌드","💼 포트폴리오","📊 성과 & 검증","🏠 부동산"
+    "📐 신뢰도트렌드","💼 포트폴리오","📊 성과 & 검증",
+    "📊 스톡시그널봇","🐾 운영 원칙"
 ])
 
 # ── 공통 함수 ──────────────────────────────────
@@ -777,50 +778,123 @@ with tab6:
             } for r in bt["results"]]),use_container_width=True,hide_index=True,height=200)
 
 with tab7:
-    metro_codes = {
-        "서울":["11110","11140","11170","11200","11215","11230","11260","11290","11305","11320","11350","11380","11410","11440","11470","11500","11530","11545","11560","11590","11620","11650","11680","11710","11740"],
-        "부산":["26110","26140","26170","26200","26230","26260","26290","26320","26350","26380","26410","26440","26470","26500","26530"],
-        "대구":["27110","27140","27170","27200","27230","27260","27290","27710"],
-        "대전":["30110","30140","30170","30200","30230"],
-        "울산":["31110","31140","31170","31200","31710"],
-    }
-    try:
-        conn = sqlite3.connect("/root/realestate-bot/realestate.db")
-        sel = st.selectbox("광역시",list(metro_codes.keys()),key="re_sel")
-        codes = metro_codes[sel]
-        ph = ",".join("?"*len(codes))
-        lc,rc = st.columns(2)
-        with lc:
-            top10 = pd.read_sql(f"""
-                SELECT apt_name, dong, area, floor, deal_amount, deal_date, is_high
-                FROM trades WHERE lawd_cd IN ({ph})
-                ORDER BY deal_amount DESC LIMIT 10
-            """,conn,params=codes)
-            if not top10.empty:
-                avg = top10["deal_amount"].mean()
-                st.metric(f"{sel} Top10 평균",f"{int(avg//10000)}억 {int(avg%10000):,}만원")
-                top10["거래금액"] = top10["deal_amount"].apply(
-                    lambda x: f"{x//10000}억 {x%10000:,}만원" if x>=10000 else f"{x:,}만원")
-                top10["신고가"] = top10["is_high"].apply(lambda x: "🔥" if x else "")
-                st.dataframe(top10[["apt_name","dong","area","floor","거래금액","deal_date","신고가"]].rename(
-                    columns={"apt_name":"아파트","dong":"동","area":"면적","floor":"층","deal_date":"거래일"}),
-                    use_container_width=True,hide_index=True,height=280)
-        with rc:
-            monthly = pd.read_sql(f"""
-                SELECT substr(deal_date,1,7) as month, AVG(deal_amount) as avg_price
-                FROM trades WHERE lawd_cd IN ({ph})
-                GROUP BY month ORDER BY month DESC LIMIT 12
-            """,conn,params=codes)
-            if not monthly.empty:
-                monthly = monthly.iloc[::-1]
-                st.markdown("<div class='section-title'>📊 월별 평균 거래가</div>", unsafe_allow_html=True)
-                fig = px.bar(monthly,x="month",y="avg_price",
-                    color="avg_price",color_continuous_scale=["#3B8BD4","#E8593C"])
-                fig.update_layout(height=300,margin=dict(l=5,r=5,t=5,b=5),
-                    paper_bgcolor="rgba(0,0,0,0)",plot_bgcolor="#fafafa",
-                    coloraxis_showscale=False,
-                    xaxis=dict(tickfont=dict(size=11,color="#2d3748")),
-                    yaxis=dict(tickfont=dict(size=11,color="#2d3748"),gridcolor="#e2e8f0"))
-                st.plotly_chart(fig,use_container_width=True)
-        conn.close()
-    except Exception as e: st.error(f"부동산 오류: {e}")
+    # ════════════════════════════════════════════
+    # 탭7: 스톡시그널봇 안내
+    # ════════════════════════════════════════════
+    st.header("📊 스톡시그널봇")
+    st.caption("KOSPI 200 종목의 기관·외국인 수급을 기반으로 관심 종목을 탐지하는 수급 기반 알리미입니다.")
+
+    st.info(
+        "스톡시그널봇은 주가를 예언하는 도구가 아니라, "
+        "기관·외국인의 실제 매수 흐름을 점수화해 BUY / WATCH / 관심PASS 후보를 분류하는 관찰 도구입니다."
+    )
+
+    st.subheader("핵심 역할")
+    st.markdown(
+        """
+        - KOSPI 200 종목 중 수급이 개선되는 종목 탐지
+        - 기관·외국인 순매수, 수급가속, 장기 연속매수 흐름 분석
+        - 차트, OBV, 실적 발표 이벤트, DART 공시 플래그로 해석 보강
+        - D+1 / D+3 / D+5 / D+10 / D+20 수익률 검증
+        - 텔레그램으로 카드형 시그널 발송
+        """
+    )
+
+    st.subheader("현재 운영 상태")
+    st.table(
+        {
+            "항목": [
+                "대상 종목",
+                "현재 버전",
+                "시그널 등급",
+                "검증 구조",
+                "텔레그램 헤더",
+                "점수 체계",
+            ],
+            "내용": [
+                "KOSPI 200",
+                "v0.3.1",
+                "BUY / WATCH / 관심PASS / PASS",
+                "D+1 / D+3 / D+5 / D+10 / D+20",
+                "📊 [시그널봇]",
+                "v0.2 점수 체계 동결 유지",
+            ],
+        }
+    )
+
+    st.subheader("점수 구조")
+    st.markdown(
+        """
+        총점은 100점 만점 구조입니다.
+
+        | 항목 | 점수 |
+        |------|------|
+        | 원자재 점수 | 20점 |
+        | 수급파워 점수 | 30점 |
+        | 수급가속 점수 (단기 12 + long_flow 8) | 20점 |
+        | 기술적 점수 | 20점 |
+        | 패시브 감점 | 최대 -10점 |
+        """
+    )
+
+    st.subheader("보조 해석 장치")
+    st.markdown(
+        """
+        - **OBV**: 수급 신호가 거래량 흐름과 맞는지 확인
+        - **실적 발표 이벤트**: 30일 이내 실적 발표 예정 여부 표시
+        - **DART 공시 플래그**: 공급계약, 수주, 자사주취득, 실적전망 등 의미 있는 공시 감지
+        - **extreme_market_day**: KOSPI 급등락이 큰 날은 일반 검증과 분리
+        """
+    )
+
+    st.warning(
+        "스톡시그널봇은 투자 추천이나 수익 보장 도구가 아닙니다. "
+        "검증 리포트는 학습과 관찰용이며, 충분한 데이터가 쌓이기 전까지 점수 공식은 변경하지 않습니다."
+    )
+
+with tab8:
+    # ════════════════════════════════════════════
+    # 탭8: 운영 원칙
+    # ════════════════════════════════════════════
+    st.header("🐾 운영 원칙")
+    st.caption("브리핑봇과 스톡시그널봇의 역할과 사용 원칙을 정리합니다.")
+
+    st.subheader("📰 브리핑봇")
+    st.markdown(
+        """
+        브리핑봇은 시장 주요 뉴스와 이벤트를 요약해 텔레그램으로 전달하는 정보 도구입니다.
+
+        - 국내외 주요 시장 뉴스 요약
+        - 경제 일정 확인
+        - 시장 분위기 파악
+        - 투자 판단 전 배경 정보 제공
+        - 텔레그램 헤더: 📰 [브리핑봇]
+        """
+    )
+
+    st.subheader("📊 스톡시그널봇")
+    st.markdown(
+        """
+        스톡시그널봇은 KOSPI 200 종목의 기관·외국인 수급을 분석해
+        관심 종목을 탐지하고 검증하는 수급 기반 관찰 도구입니다.
+
+        - 수급파워, 단기수급가속, long_flow_score 분석
+        - 차트, OBV, 실적 발표 이벤트, DART 공시 플래그로 해석 보강
+        - BUY / WATCH / 관심PASS 분류
+        - D+N 수익률 검증
+        - 텔레그램 헤더: 📊 [시그널봇]
+        """
+    )
+
+    st.subheader("공통 주의사항")
+    st.markdown(
+        """
+        - 이 시스템은 투자 추천이나 수익 보장 도구가 아닙니다.
+        - 매수·매도 결정은 사용자가 최종 판단해야 합니다.
+        - 매일 검증 리포트는 학습과 관찰용입니다.
+        - D+1, D+3, D+5 같은 단기 결과만으로 공식이나 필터를 바꾸지 않습니다.
+        - 충분한 데이터와 반복 패턴이 확인될 때만 시스템 변경을 검토합니다.
+        """
+    )
+
+    st.success("현재 운영 원칙: KOSPI 200 중심 운용, v0.2 점수 체계 유지, 코스닥 확장 보류")
