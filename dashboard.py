@@ -53,10 +53,10 @@ with hc2:
     if st.button("🔄 갱신"):
         st.cache_data.clear(); st.rerun()
 
-tab1,tab2,tab3,tab4,tab5,tab6,tab7,tab8 = st.tabs([
-    "🌍 시장현황","📋 워치리스트","📰 브리핑히스토리",
-    "📐 신뢰도트렌드","💼 포트폴리오","📊 성과 & 검증",
-    "📊 스톡시그널봇","🐾 운영 원칙"
+tab1,tab2,tab3,tab4,tab5,tab6 = st.tabs([
+    "🌍 시장현황","🎯 오늘의 추천",
+    "📰 브리핑봇","📊 시그널봇",
+    "💼 포트폴리오","🐾 운영 원칙"
 ])
 
 # ── 공통 함수 ──────────────────────────────────
@@ -158,6 +158,18 @@ def get_daily_summary():
                     "negative":lines[3][:70] if len(lines)>3 else ""}
         return result
     except: return {}
+
+@st.cache_data(ttl=600)
+def get_signal_bot_data():
+    """stock-signal GitHub에서 오늘의 시그널 데이터 가져오기"""
+    url = "https://raw.githubusercontent.com/foruniquelife00/stock-signal/main/exports/signals_for_dashboard.json"
+    try:
+        res = requests.get(url, timeout=8)
+        if res.status_code == 200:
+            return res.json()
+    except Exception:
+        pass
+    return None
 
 # ════════════════════════════════════════════
 # 탭1: 시장현황
@@ -274,9 +286,124 @@ with tab1:
         except: st.caption("로딩 중...")
 
 # ════════════════════════════════════════════
-# 탭2: 워치리스트
+# 탭2: 오늘의 추천 종목
 # ════════════════════════════════════════════
 with tab2:
+    st.markdown("<div class='section-title'>🎯 오늘의 추천 종목</div>", unsafe_allow_html=True)
+    st.caption(f"기준일: {now.strftime('%Y.%m.%d')}  |  브리핑봇과 시그널봇의 오늘 추천을 한눈에 비교합니다.")
+    st.divider()
+
+    briefcol, sigcol = st.columns(2)
+
+    # ── 브리핑봇 오늘 추천 ──────────────────────────────
+    with briefcol:
+        st.markdown(
+            "<div style='background:#ebf8ff;border:2px solid #3182ce;border-radius:8px;padding:6px 12px;margin-bottom:8px'>"
+            "<span style='font-size:13px;font-weight:700;color:#2b6cb0'>📰 브리핑봇 오늘의 추천</span>"
+            "<span style='font-size:11px;color:#4a5568;margin-left:8px'>AI 시장분석 기반</span>"
+            "</div>", unsafe_allow_html=True)
+        try:
+            conn_b = sqlite3.connect(config.DB_PATH)
+            today_str = now.strftime("%Y-%m-%d")
+            b_row = conn_b.execute(
+                "SELECT recommended, buy_price, briefing_text, trust_score FROM briefing_history"
+                " WHERE date=? ORDER BY rowid DESC LIMIT 1",
+                (today_str,)).fetchone()
+            conn_b.close()
+            if b_row and b_row[0]:
+                rec_name   = b_row[0]
+                buy_price  = b_row[1]
+                brief_text = b_row[2] or ""
+                trust_sc   = b_row[3] or 0
+                is_kr = str(STOCK_MAP.get(rec_name, "")).endswith((".KS", ".KQ"))
+                fmt_p = lambda x: f"{int(x):,}원" if (is_kr and x) else (f"${x:.2f}" if x else "-")
+                target_p = stoploss_p = reason_t = ""
+                for ln in brief_text.split("\n"):
+                    ln = ln.strip()
+                    if "목표가" in ln and ":" in ln:
+                        target_p   = re.sub(r'.*?[：:]\s*', "", ln).strip()[:20]
+                    elif "손절가" in ln and ":" in ln:
+                        stoploss_p = re.sub(r'.*?[：:]\s*', "", ln).strip()[:20]
+                    elif ("추천 이유" in ln or "선정 이유" in ln or "상승 근거" in ln) and ":" in ln:
+                        reason_t   = re.sub(r'.*?[：:]\s*', "", ln).strip()[:80]
+                trust_color = "#38a169" if trust_sc >= 70 else "#d69e2e" if trust_sc >= 50 else "#e53e3e"
+                reason_html = (f"<div style='font-size:11px;color:#2d3748;margin-top:6px;"
+                               f"background:#ebf8ff;border-radius:4px;padding:4px 8px'>💡 {reason_t}</div>"
+                               if reason_t else "")
+                st.markdown(
+                    f"<div style='background:#f0fff4;border:1px solid #c6f6d5;border-radius:8px;padding:10px 14px;margin:4px 0'>"
+                    f"<div style='font-size:17px;font-weight:700;color:#1a202c'>{rec_name}</div>"
+                    f"<div style='font-size:11px;color:{trust_color};margin:2px 0'>신뢰도 {trust_sc}점</div>"
+                    f"<div style='display:flex;gap:20px;margin-top:6px'>"
+                    f"<div><div style='font-size:10px;color:#718096'>💹 매수가</div>"
+                    f"<div style='font-size:13px;font-weight:700;color:#1a202c'>{fmt_p(buy_price)}</div></div>"
+                    f"<div><div style='font-size:10px;color:#718096'>🎯 목표가</div>"
+                    f"<div style='font-size:13px;font-weight:700;color:#38a169'>{target_p or '-'}</div></div>"
+                    f"<div><div style='font-size:10px;color:#718096'>🛑 손절가</div>"
+                    f"<div style='font-size:13px;font-weight:700;color:#e53e3e'>{stoploss_p or '-'}</div></div>"
+                    f"</div>{reason_html}</div>", unsafe_allow_html=True)
+            else:
+                st.info("오늘 브리핑 데이터 없음\n매일 KST 09:30 자동 생성")
+        except Exception as _e:
+            st.error(f"브리핑봇 데이터 오류: {_e}")
+
+    # ── 시그널봇 오늘 추천 ──────────────────────────────
+    with sigcol:
+        st.markdown(
+            "<div style='background:#fff5f5;border:2px solid #fc8181;border-radius:8px;padding:6px 12px;margin-bottom:8px'>"
+            "<span style='font-size:13px;font-weight:700;color:#c53030'>📊 시그널봇 오늘의 추천</span>"
+            "<span style='font-size:11px;color:#4a5568;margin-left:8px'>KOSPI 200 수급 분석 기반</span>"
+            "</div>", unsafe_allow_html=True)
+        sig_data = get_signal_bot_data()
+        if sig_data is None:
+            st.info("시그널봇 데이터 로드 중...\n저녁 장 마감 후 자동 업데이트됩니다.")
+        else:
+            sig_date = sig_data.get("date", "")
+            sig_time = sig_data.get("generated_at", "")
+            signals  = sig_data.get("signals", [])
+            st.caption(f"업데이트: {sig_time}  |  기준일: {sig_date}")
+            if not signals:
+                st.info("오늘 BUY/WATCH 시그널 없음")
+            else:
+                buy_sigs   = [s for s in signals if s.get("grade") == "BUY"]
+                watch_sigs = [s for s in signals if s.get("grade") == "WATCH"]
+                if buy_sigs:
+                    st.markdown("<div style='font-size:11px;font-weight:700;color:#c53030;margin:4px 0'>🔴 BUY</div>", unsafe_allow_html=True)
+                    for s in buy_sigs:
+                        st.markdown(
+                            f"<div style='background:#fff5f5;border:1px solid #feb2b2;border-radius:8px;padding:8px 12px;margin:4px 0'>"
+                            f"<div style='font-size:14px;font-weight:700;color:#1a202c'>{s['name']}"
+                            f" <span style='font-size:11px;color:#e53e3e'>BUY {s.get('score',0):.0f}점</span></div>"
+                            f"<div style='display:flex;gap:16px;margin-top:4px'>"
+                            f"<div><div style='font-size:10px;color:#718096'>💹 진입가</div>"
+                            f"<div style='font-size:12px;font-weight:700;color:#1a202c'>{s.get('entry','-')}</div></div>"
+                            f"<div><div style='font-size:10px;color:#718096'>🎯 목표가</div>"
+                            f"<div style='font-size:12px;font-weight:700;color:#38a169'>{s.get('target','-')}</div></div>"
+                            f"<div><div style='font-size:10px;color:#718096'>🛑 손절가</div>"
+                            f"<div style='font-size:12px;font-weight:700;color:#e53e3e'>{s.get('stoploss','-')}</div></div>"
+                            f"</div>"
+                            f"<div style='font-size:11px;color:#2d3748;margin-top:4px'>💡 {s.get('reason','-')[:80]}</div>"
+                            f"</div>", unsafe_allow_html=True)
+                if watch_sigs:
+                    st.markdown("<div style='font-size:11px;font-weight:700;color:#d69e2e;margin:6px 0 4px'>🟡 WATCH</div>", unsafe_allow_html=True)
+                    for s in watch_sigs:
+                        st.markdown(
+                            f"<div style='background:#fffff0;border:1px solid #faf089;border-radius:6px;padding:6px 10px;margin:3px 0'>"
+                            f"<div style='font-size:13px;font-weight:700;color:#1a202c'>{s['name']}"
+                            f" <span style='font-size:11px;color:#d69e2e'>WATCH {s.get('score',0):.0f}점</span></div>"
+                            f"<div style='font-size:11px;color:#2d3748;margin-top:2px'>💡 {s.get('reason','-')[:70]}</div>"
+                            f"</div>", unsafe_allow_html=True)
+
+# ════════════════════════════════════════════
+# 탭3: 브리핑봇 (AI 워치리스트 / 히스토리 / 신뢰도 / 성과)
+# ════════════════════════════════════════════
+with tab3:
+    bt1, bt2, bt3, bt4 = st.tabs([
+        "🤖 AI 워치리스트", "📰 브리핑히스토리",
+        "📐 신뢰도트렌드", "📊 성과 & 검증"
+    ])
+
+with bt1:
     from ai_watchlist import load_ai_watchlist_full
     ai_data = load_ai_watchlist_full()
     ai_stocks = ai_data.get("stocks",[])
@@ -381,10 +508,7 @@ with tab2:
                     st.success(r) if "✅" in r else st.error(r)
                     st.cache_data.clear()
 
-# ════════════════════════════════════════════
-# 탭3: 브리핑 히스토리
-# ════════════════════════════════════════════
-with tab3:
+with bt2:
     try:
         conn = sqlite3.connect(config.DB_PATH)
         tables = [r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()]
@@ -462,10 +586,7 @@ with tab3:
     except Exception as e:
         st.error(f"오류: {e}")
 
-# ════════════════════════════════════════════
-# 탭4: 신뢰도 트렌드
-# ════════════════════════════════════════════
-with tab4:
+with bt3:
     try:
         conn = sqlite3.connect(config.DB_PATH)
         tables = [r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()]
@@ -643,9 +764,9 @@ with tab5:
         st.dataframe(df.drop(columns=["_rate","_invest","_cur_val"]),
             use_container_width=True,hide_index=True,height=180)
 
-with tab6:
+with bt4:
     # ════════════════════════════════════════════
-    # 탭6: 성과 & 검증 (성과추적 + 백테스팅 통합)
+    # 브리핑봇 성과 & 검증
     # ════════════════════════════════════════════
 
     # 설명 박스
@@ -777,11 +898,11 @@ with tab6:
                 "결과":f"{r['outcome_icon']} {r['outcome']}","보유일":f"{r['hold_days']}일"
             } for r in bt["results"]]),use_container_width=True,hide_index=True,height=200)
 
-with tab7:
+with tab4:
     # ════════════════════════════════════════════
-    # 탭7: 스톡시그널봇 안내
+    # 탭4: 시그널봇
     # ════════════════════════════════════════════
-    st.header("📊 스톡시그널봇")
+    st.header("📊 시그널봇")
     st.caption("KOSPI 200 종목의 기관·외국인 수급을 기반으로 관심 종목을 탐지하는 수급 기반 알리미입니다.")
 
     st.info(
@@ -852,9 +973,9 @@ with tab7:
         "검증 리포트는 학습과 관찰용이며, 충분한 데이터가 쌓이기 전까지 점수 공식은 변경하지 않습니다."
     )
 
-with tab8:
+with tab6:
     # ════════════════════════════════════════════
-    # 탭8: 운영 원칙
+    # 탭6: 운영 원칙
     # ════════════════════════════════════════════
     st.header("🐾 운영 원칙")
     st.caption("브리핑봇과 스톡시그널봇의 역할과 사용 원칙을 정리합니다.")
