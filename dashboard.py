@@ -852,9 +852,13 @@ with bt4:
 
         bt = st.session_state.get("bt")
         if not bt:
-            from backtest import run_backtest
-            bt = run_backtest()
-            st.session_state["bt"] = bt
+            try:
+                from backtest import run_backtest
+                bt = run_backtest()
+                st.session_state["bt"] = bt
+            except Exception as _e:
+                bt = {"error": f"백테스팅 데이터 없음 (첫 브리핑 실행 후 사용 가능)"}
+                st.session_state["bt"] = bt
 
         if "error" in bt:
             st.info(bt["error"])
