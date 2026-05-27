@@ -284,17 +284,17 @@ def run_git_backup():
 
 
 def run_scheduler():
-    # KST 09:30 = UTC 00:30
-    schedule.every().day.at("23:00").do(run_briefing)
-    schedule.every().monday.at("23:00").do(run_weekly)
+    # KST 07:30 = UTC 22:30
+    schedule.every().day.at("22:30").do(run_briefing)
+    schedule.every().monday.at("22:30").do(run_weekly)
     schedule.every().friday.at("14:00").do(run_friday)
-    schedule.every().day.at("23:00").do(run_monthly_if_first)
+    schedule.every().day.at("22:30").do(run_monthly_if_first)
     schedule.every(30).minutes.do(run_alert_if_market_open)
     schedule.every(60).minutes.do(run_event_detection_if_daytime)
     schedule.every().day.at("01:00").do(run_git_backup)
 
-    logging.info("스케줄러 시작 — KST 09:30 브리핑 / 30분마다 알림")
-    print("스케줄러 시작 — KST 09:30 브리핑 / 30분마다 알림")
+    logging.info("스케줄러 시작 — KST 07:30 브리핑 / 30분마다 알림")
+    print("스케줄러 시작 — KST 07:30 브리핑 / 30분마다 알림")
 
     while True:
         schedule.run_pending()
