@@ -8,14 +8,18 @@ DB_PATH = config.DB_PATH
 
 
 def get_all_recommendations() -> list:
-    """전체 추천 종목 이력 조회"""
+    """전체 추천 종목 이력 조회. 테이블 없으면 빈 리스트."""
     conn = sqlite3.connect(DB_PATH)
-    rows = conn.execute("""
-        SELECT date, stock_name, ticker, buy_price, target_price, stop_loss
-        FROM recommendations
-        ORDER BY date ASC
-    """).fetchall()
-    conn.close()
+    try:
+        rows = conn.execute("""
+            SELECT date, stock_name, ticker, buy_price, target_price, stop_loss
+            FROM recommendations
+            ORDER BY date ASC
+        """).fetchall()
+    except sqlite3.OperationalError:
+        rows = []   # recommendations 테이블 없음 (DB 미초기화)
+    finally:
+        conn.close()
     return rows
 
 
