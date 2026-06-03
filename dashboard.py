@@ -161,7 +161,26 @@ def get_daily_summary():
 
 @st.cache_data(ttl=600)
 def get_signal_bot_data():
-    """stock-signal GitHub에서 오늘의 시그널 데이터 가져오기"""
+    """
+    오늘의 시그널 데이터 로드.
+    1순위: 같은 서버의 로컬 파일 (stock-signal과 동일 호스트)
+    2순위: GitHub raw (다른 호스트 배포 시 fallback)
+    """
+    import json
+    from pathlib import Path
+    # 1순위: 로컬 파일 (서버 동일 호스트)
+    local_paths = [
+        Path("/root/stock-signal/exports/signals_for_dashboard.json"),
+        Path(__file__).resolve().parent.parent / "stock-signal" / "exports" / "signals_for_dashboard.json",
+    ]
+    for p in local_paths:
+        try:
+            if p.exists():
+                with open(p, encoding="utf-8") as f:
+                    return json.load(f)
+        except Exception:
+            pass
+    # 2순위: GitHub raw fallback
     url = "https://raw.githubusercontent.com/foruniquelife00/stock-signal/main/exports/signals_for_dashboard.json"
     try:
         res = requests.get(url, timeout=8)
