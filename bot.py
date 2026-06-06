@@ -233,6 +233,21 @@ def run_event_detection():
         logging.error(f"이벤트 감지 오류: {e}")
 
 
+def run_briefing_review():
+    """KST 17:50 - 아침 브리핑 복기 (DB/로그 기록만, 텔레그램 발송 안 함)"""
+    weekday = datetime.now(timezone.utc).weekday()
+    if weekday >= 5:
+        return
+    try:
+        from evaluator import evaluate_briefing
+        result = evaluate_briefing()
+        logging.info(f"브리핑 복기 완료\n{result}")
+        print(f"[복기]\n{result}")
+        # 초기 단계: 텔레그램 자동 발송 안 함 (품질 확인 후 활성화)
+    except Exception as e:
+        logging.error(f"브리핑 복기 오류: {e}")
+
+
 def is_market_open() -> bool:
     """한국 장 시간 체크 (KST 09:00~15:30 평일)"""
     from datetime import datetime, timezone, timedelta
@@ -292,6 +307,8 @@ def run_scheduler():
     schedule.every(30).minutes.do(run_alert_if_market_open)
     schedule.every(60).minutes.do(run_event_detection_if_daytime)
     schedule.every().day.at("01:00").do(run_git_backup)
+    # KST 17:50 = UTC 08:50 — 아침 브리핑 복기 (DB 기록만)
+    schedule.every().day.at("08:50").do(run_briefing_review)
 
     logging.info("스케줄러 시작 — KST 07:30 브리핑 / 30분마다 알림")
     print("스케줄러 시작 — KST 07:30 브리핑 / 30분마다 알림")

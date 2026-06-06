@@ -612,11 +612,38 @@ with bt3:
         hist_df = pd.read_sql(
             "SELECT date, weekday, trust_score, recommended, fgi_score, kospi, sp500 FROM briefing_history ORDER BY date ASC",
             conn) if "briefing_history" in tables else pd.DataFrame()
+        # 복기 적중률 데이터 (컬럼 있을 때만)
+        try:
+            review_df = pd.read_sql(
+                "SELECT date, market_view, direction_result, sector_result, usefulness_grade "
+                "FROM briefing_history WHERE direction_result IS NOT NULL ORDER BY date DESC LIMIT 30",
+                conn)
+        except Exception:
+            review_df = pd.DataFrame()
         conn.close()
 
         if hist_df.empty:
             st.info("브리핑 데이터가 아직 없어요.")
         else:
+            # ── 브리핑 복기 적중률 요약 (GPT 2026-06-06) ──
+            if not review_df.empty:
+                n_rev = len(review_df)
+                dir_hit = (review_df["direction_result"] == "hit").sum()
+                dir_part = (review_df["direction_result"] == "partial").sum()
+                sec_hit = (review_df["sector_result"] == "hit").sum()
+                use_good = (review_df["usefulness_grade"] == "good").sum()
+                dir_rate = (dir_hit + dir_part * 0.5) / n_rev * 100
+                sec_eval = review_df[review_df["sector_result"].isin(["hit","partial","miss"])]
+                sec_rate = (sec_hit / len(sec_eval) * 100) if len(sec_eval) else 0
+                st.markdown(
+                    f"<div class='stat-row'>"
+                    f"<div><span class='stat-item-label'>🎯 방향성 적중 </span><span class='stat-item-val'>{dir_rate:.0f}%</span> <span style='font-size:10px;color:#718096'>(적중 {dir_hit}/부분 {dir_part}/{n_rev})</span></div>"
+                    f"<div><span class='stat-item-label'>🔭 섹터 적중 </span><span class='stat-item-val'>{sec_rate:.0f}%</span> <span style='font-size:10px;color:#718096'>({len(sec_eval)}건 평가)</span></div>"
+                    f"<div><span class='stat-item-label'>👍 유용성 good </span><span class='stat-item-val'>{use_good}/{n_rev}</span></div>"
+                    f"</div>", unsafe_allow_html=True)
+                st.caption("※ 복기는 학습/관찰용입니다. 단기 결과로 브리핑 공식을 바꾸지 않습니다.")
+            else:
+                st.caption("📋 브리핑 복기 데이터 누적 중 — 매일 17:50 자동 평가 (방향성/섹터/유용성)")
             avg_t = hist_df["trust_score"].mean()
             max_t = hist_df["trust_score"].max()
             min_t = hist_df["trust_score"].min()
