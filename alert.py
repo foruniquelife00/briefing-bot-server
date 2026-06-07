@@ -104,7 +104,7 @@ def mark_alerted(name: str, today: str):
     try:
         requests.post(url, json={
             "chat_id": config.TELEGRAM_CHAT_ID,
-            "text":    message,
+            "text":    "📰 [브리핑봇]\n" + message,   # 발송 주체 식별 헤더
         }, timeout=10)
     except Exception as e:
         print(f"텔레그램 오류: {e}")
