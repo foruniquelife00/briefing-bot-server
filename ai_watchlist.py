@@ -193,7 +193,16 @@ def load_user_watchlist() -> list:
 def get_combined_watchlist() -> list:
     ai_list   = load_ai_watchlist()
     user_list = load_user_watchlist()
-    return list(dict.fromkeys(ai_list + user_list))
+    combined  = list(dict.fromkeys(ai_list + user_list))
+    if not combined:
+        # AI/사용자 워치리스트가 비면 기본 종목으로 fallback
+        # (ANTHROPIC 키 오류 등으로 ai_watchlist.json 미생성 시에도 시장 배경 확보)
+        try:
+            from watchlist import DEFAULT_WATCHLIST
+            return DEFAULT_WATCHLIST.copy()
+        except Exception:
+            return []
+    return combined
 
 
 def update_ai_watchlist():
