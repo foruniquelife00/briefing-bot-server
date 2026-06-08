@@ -175,7 +175,8 @@ def handle_message(chat_id: int, text: str):
 # ── 스케줄러 ──────────────────────────────────────
 
 def run_briefing():
-    weekday = datetime.now(timezone.utc).weekday()
+    # KST 기준 요일 판단 (UTC 기준이면 KST 월요일=UTC 일요일로 오판 → 월요일 누락)
+    weekday = datetime.now(timezone(timedelta(hours=9))).weekday()
     if weekday >= 5:
         logging.info("주말 — 브리핑 건너뜀")
         return
@@ -235,7 +236,7 @@ def run_event_detection():
 
 def run_briefing_review():
     """KST 17:50 - 아침 브리핑 복기 (DB/로그 기록만, 텔레그램 발송 안 함)"""
-    weekday = datetime.now(timezone.utc).weekday()
+    weekday = datetime.now(timezone(timedelta(hours=9))).weekday()
     if weekday >= 5:
         return
     try:

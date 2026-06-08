@@ -2,8 +2,10 @@ from openai import OpenAI
 import anthropic
 import config
 
-openai_client  = OpenAI(api_key=config.OPENAI_API_KEY)
-claude_client  = anthropic.Anthropic(api_key=config.ANTHROPIC_API_KEY)
+# OpenAI 키가 config에 없거나 비어도 import가 죽지 않도록 안전 처리
+_openai_key = getattr(config, "OPENAI_API_KEY", "") or ""
+openai_client = OpenAI(api_key=_openai_key) if _openai_key else None
+claude_client = anthropic.Anthropic(api_key=getattr(config, "ANTHROPIC_API_KEY", "") or "")
 
 # ── GPT 역할: 정량 분석 ──────────────────────────
 GPT_SYSTEM = """당신은 정량적 데이터 분석 전문가입니다.
@@ -81,6 +83,8 @@ def gpt_quantitative_analysis(market_data: dict) -> str:
 4. 리스크/리워드 비율
 5. 한줄 정량 결론"""
 
+        if openai_client is None:
+            return "GPT 정량 분석 비활성 (OPENAI_API_KEY 미설정)"
         response = openai_client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[
