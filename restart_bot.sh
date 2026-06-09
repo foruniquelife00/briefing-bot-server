@@ -3,10 +3,10 @@
 # 사용법: bash restart_bot.sh
 
 echo "[1] 기존 bot.py 종료..."
-pkill -9 -f "briefing-bot-server/bot.py"
+pkill -9 -f "bot.py"
 sleep 3
 
-REMAIN=$(ps aux | grep "briefing-bot-server/bot.py" | grep -v grep | wc -l)
+REMAIN=$(ps aux | grep "[b]ot.py" | grep -v grep | wc -l)
 if [ "$REMAIN" -ne 0 ]; then
     echo "  ⚠️ 아직 $REMAIN 개 남음 — 재시도"
     pkill -9 -f "bot.py"
