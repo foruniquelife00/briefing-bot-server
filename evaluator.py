@@ -109,7 +109,11 @@ def _judge_usefulness(text: str) -> tuple[str, dict]:
         "no_stock_reco":     not any(k in text for k in ["추천 종목", "매수 유망", "목표가", "손절가"]),
     }
     score = sum(checks.values())
-    grade = "good" if score >= 5 else ("normal" if score >= 3 else "poor")
+    # 종목 추천이 감지되면(no_stock_reco=False) GOOD 불가 — 최대 normal로 제한 (GPT 2026-06-10 지시)
+    if not checks["no_stock_reco"]:
+        grade = "normal" if score >= 3 else "poor"
+    else:
+        grade = "good" if score >= 5 else ("normal" if score >= 3 else "poor")
     return grade, checks
 
 

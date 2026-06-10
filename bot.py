@@ -300,11 +300,11 @@ def run_git_backup():
 
 
 def run_scheduler():
-    # KST 07:00 = UTC 22:00 (프리마켓 발생 전 오전 발송)
-    schedule.every().day.at("22:00").do(run_briefing)
-    schedule.every().monday.at("22:00").do(run_weekly)
+    # KST 06:50 = UTC 21:50 (시그널봇 07:00보다 먼저: 시장배경 → 관심종목 순서)
+    schedule.every().day.at("21:50").do(run_briefing)
+    schedule.every().monday.at("21:50").do(run_weekly)
     schedule.every().friday.at("14:00").do(run_friday)
-    schedule.every().day.at("22:00").do(run_monthly_if_first)
+    schedule.every().day.at("21:50").do(run_monthly_if_first)
     schedule.every(30).minutes.do(run_alert_if_market_open)
     schedule.every(60).minutes.do(run_event_detection_if_daytime)
     schedule.every().day.at("01:00").do(run_git_backup)
