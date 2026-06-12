@@ -319,7 +319,19 @@ def run_scheduler():
         time.sleep(30)
 
 
+def _validate_config():
+    """시작 시 필수 키 검증 — 누락이면 즉시 명확한 에러로 종료 (fail-fast)"""
+    required = ["TELEGRAM_TOKEN", "TELEGRAM_CHAT_ID", "ANTHROPIC_API_KEY", "DB_PATH"]
+    missing = [k for k in required if not getattr(config, k, None)]
+    if missing:
+        msg = f"[FATAL] config.py 필수 키 누락: {', '.join(missing)} — 확인 후 재시작"
+        print(msg)
+        logging.error(msg)
+        raise SystemExit(1)
+
+
 def main():
+    _validate_config()
     # 명령어 등록
     commands = [
         {"command": "목록",     "description": "워치리스트 확인"},
