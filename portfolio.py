@@ -114,10 +114,15 @@ def get_portfolio_status() -> str:
     total_current = 0
     items        = []
 
+    from toss_price import get_prices
+    _prices = get_prices([r[1] for r in rows])   # 토스 일괄 1콜 + yfinance fallback
+
     for row in rows:
         name, ticker, qty, buy_price, buy_date = row
         try:
-            current  = yf.Ticker(ticker).fast_info.last_price
+            current  = _prices.get(ticker)
+            if current is None:
+                continue
             is_kr    = ticker.endswith(".KS") or ticker.endswith(".KQ")
             fmt      = lambda x: f"{int(x):,}원" if is_kr else f"${x:,.2f}"
             rate     = (current - buy_price) / buy_price * 100
@@ -181,10 +186,15 @@ def get_portfolio_data() -> list:
     conn.close()
 
     items = []
+    from toss_price import get_prices
+    _prices = get_prices([r[1] for r in rows])   # 토스 일괄 1콜 + yfinance fallback
+
     for row in rows:
         name, ticker, qty, buy_price, buy_date = row
         try:
-            current = yf.Ticker(ticker).fast_info.last_price
+            current = _prices.get(ticker)
+            if current is None:
+                continue
             is_kr   = ticker.endswith(".KS") or ticker.endswith(".KQ")
             fmt     = lambda x: f"{int(x):,}원" if is_kr else f"${x:,.2f}"
             rate    = (current - buy_price) / buy_price * 100
