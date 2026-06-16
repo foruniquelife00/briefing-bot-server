@@ -836,11 +836,9 @@ with bt4:
             else:
                 @st.cache_data(ttl=300)
                 def get_prices_perf(tickers):
-                    prices = {}
-                    for t in tickers:
-                        try: prices[t] = yf.Ticker(t).fast_info.last_price
-                        except: prices[t] = None
-                    return prices
+                    # 토스 일괄 1콜 (yfinance 대비 ~33배) + 실패 시 yfinance fallback
+                    from toss_price import get_prices
+                    return get_prices(list(tickers))
 
                 prices = get_prices_perf(tuple(df["ticker"].unique()))
                 rows = []
