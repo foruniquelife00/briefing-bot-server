@@ -119,7 +119,7 @@ def generate_weekly_briefing() -> str:
 9. 💬 애널리스트 주간 한마디"""
 
     message = client.messages.create(
-        model="claude-sonnet-4-20250514",
+        model="claude-sonnet-4-6",
         max_tokens=2500,
         system=SYSTEM_PROMPT,
         messages=[{"role": "user", "content": prompt}]
@@ -260,7 +260,7 @@ def generate_friday_briefing() -> str:
 11. 💬 애널리스트 주말 한마디"""
 
     message = client.messages.create(
-        model="claude-sonnet-4-20250514",
+        model="claude-sonnet-4-6",
         max_tokens=2500,
         system=FRIDAY_SYSTEM_PROMPT,
         messages=[{"role": "user", "content": prompt}]

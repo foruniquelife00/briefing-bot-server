@@ -123,7 +123,7 @@ GPT 정량 분석과 브리핑을 비교하여:
 간결하게 5줄 이내로 작성해주세요."""
 
         message = claude_client.messages.create(
-            model="claude-sonnet-4-20250514",
+            model="claude-sonnet-4-6",
             max_tokens=500,
             messages=[
                 {"role": "user", "content": prompt}
