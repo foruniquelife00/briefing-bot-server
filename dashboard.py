@@ -263,7 +263,7 @@ with tab1:
                 xaxis_rangeslider_visible=False,
                 xaxis=dict(gridcolor="#e2e8f0",tickfont=dict(size=10,color="#4a5568")),
                 yaxis=dict(gridcolor="#e2e8f0",tickfont=dict(size=10,color="#4a5568")))
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, width='stretch')
         except: st.info("차트 로딩 중...")
 
     with right:
@@ -506,7 +506,7 @@ with bt1:
                 st.markdown("<div class='section-title'>📉 하락 TOP3</div>", unsafe_allow_html=True)
                 for r in sorted(wl_data,key=lambda x:x["_rate"])[:3]: st.error(f"{r['종목']}: {r['현재가']} ({r['등락률']})")
             st.dataframe(pd.DataFrame(wl_data).drop(columns=["_rate","_pos52"]),
-                use_container_width=True, hide_index=True, height=250)
+                width='stretch', hide_index=True, height=250)
 
     with st.expander("⚙️ 워치리스트 관리", expanded=False):
         ca,cb = st.columns(2)
@@ -691,7 +691,7 @@ with bt3:
                     yaxis=dict(range=[0,105],gridcolor="#e2e8f0",tickfont=dict(color="#4a5568",size=11)),
                     xaxis=dict(gridcolor="#e2e8f0",tickfont=dict(color="#4a5568",size=11)),
                     showlegend=False)
-                st.plotly_chart(fig,use_container_width=True)
+                st.plotly_chart(fig,width='stretch')
 
             with rc:
                 st.markdown("<div class='section-title'>📊 등급 분포</div>", unsafe_allow_html=True)
@@ -705,13 +705,13 @@ with bt3:
                 fig2.update_layout(height=220,margin=dict(l=5,r=5,t=5,b=5),
                     paper_bgcolor="rgba(0,0,0,0)",
                     legend=dict(font=dict(size=11,color="#2d3748")))
-                st.plotly_chart(fig2,use_container_width=True)
+                st.plotly_chart(fig2,width='stretch')
 
             st.markdown("<div class='section-title'>📋 브리핑 이력</div>", unsafe_allow_html=True)
             display_df = hist_df[["date","weekday","trust_score","등급","recommended","fgi_score"]].copy()
             display_df.columns = ["날짜","요일","신뢰도","등급","추천종목","공포탐욕"]
             st.dataframe(display_df.sort_values("날짜",ascending=False),
-                use_container_width=True,hide_index=True,height=180)
+                width='stretch',hide_index=True,height=180)
     except Exception as e:
         st.error(f"신뢰도 트렌드 오류: {e}")
 
@@ -735,7 +735,7 @@ with tab5:
         pprice = st.number_input("매수가",min_value=0.0,value=0.0,step=100.0,key="pf_price",label_visibility="collapsed")
     with pd_:
         st.caption(" ")
-        if st.button("➕ 추가",key="pf_add",use_container_width=True):
+        if st.button("➕ 추가",key="pf_add",width='stretch'):
             if pname and pprice>0:
                 from portfolio import add_portfolio
                 r = add_portfolio(pname.strip(),pqty,pprice)
@@ -754,7 +754,7 @@ with tab5:
         del_nm = st.text_input("삭제종목",value=pf_names[0] if pf_names else "",key="pf_del_txt",label_visibility="collapsed")
     with de2:
         st.caption(" ")
-        if st.button("➖ 삭제",key="pf_del_btn",use_container_width=True):
+        if st.button("➖ 삭제",key="pf_del_btn",width='stretch'):
             if del_nm:
                 from portfolio import remove_portfolio
                 r = remove_portfolio(del_nm.strip())
@@ -797,18 +797,18 @@ with tab5:
                 coloraxis_showscale=False,
                 xaxis=dict(tickfont=dict(size=12,color="#2d3748")),
                 yaxis=dict(tickfont=dict(size=11,color="#2d3748"),gridcolor="#e2e8f0"))
-            st.plotly_chart(fig,use_container_width=True)
+            st.plotly_chart(fig,width='stretch')
         with rc:
             st.markdown("<div class='section-title'>🥧 포트폴리오 비중</div>", unsafe_allow_html=True)
             fig2 = px.pie(df,values="_cur_val",names="종목")
             fig2.update_traces(textfont_size=12,textfont_color="#1a202c")
             fig2.update_layout(height=200,margin=dict(l=5,r=5,t=5,b=5),
                 paper_bgcolor="rgba(0,0,0,0)",legend=dict(font=dict(size=12,color="#2d3748")))
-            st.plotly_chart(fig2,use_container_width=True)
+            st.plotly_chart(fig2,width='stretch')
 
         st.markdown("<div class='section-title'>📋 보유 종목 상세</div>", unsafe_allow_html=True)
         st.dataframe(df.drop(columns=["_rate","_invest","_cur_val"]),
-            use_container_width=True,hide_index=True,height=180)
+            width='stretch',hide_index=True,height=180)
 
 with bt4:
     # ════════════════════════════════════════════
@@ -883,8 +883,8 @@ with bt4:
                         coloraxis_showscale=False,
                         xaxis=dict(tickfont=dict(size=11,color="#2d3748")),
                         yaxis=dict(tickfont=dict(size=11,color="#2d3748"),gridcolor="#e2e8f0"))
-                    st.plotly_chart(fig,use_container_width=True)
-                    st.dataframe(cdf.drop(columns=["_rate"]),use_container_width=True,hide_index=True,height=200)
+                    st.plotly_chart(fig,width='stretch')
+                    st.dataframe(cdf.drop(columns=["_rate"]),width='stretch',hide_index=True,height=200)
         except Exception as e: st.error(f"오류: {e}")
 
     with bt_tab:
@@ -929,7 +929,7 @@ with bt4:
                     coloraxis_showscale=False,
                     xaxis=dict(tickfont=dict(size=11,color="#2d3748")),
                     yaxis=dict(tickfont=dict(size=11,color="#2d3748"),gridcolor="#e2e8f0"))
-                st.plotly_chart(fig,use_container_width=True)
+                st.plotly_chart(fig,width='stretch')
             with rc:
                 st.markdown("<div class='section-title'>🥧 결과 분포</div>", unsafe_allow_html=True)
                 oc = pd.DataFrame(bt["results"])["outcome"].value_counts()
@@ -938,13 +938,13 @@ with bt4:
                 fig2.update_traces(textfont_size=12,textfont_color="#1a202c")
                 fig2.update_layout(height=220,margin=dict(l=5,r=5,t=5,b=5),
                     paper_bgcolor="rgba(0,0,0,0)",legend=dict(font=dict(size=11,color="#2d3748")))
-                st.plotly_chart(fig2,use_container_width=True)
+                st.plotly_chart(fig2,width='stretch')
 
             st.dataframe(pd.DataFrame([{
                 "날짜":r["date"],"종목":r["name"],"매수가":r["buy_str"],
                 "현재가":r["current_str"],"수익률":f"{r['rate']:+.2f}%",
                 "결과":f"{r['outcome_icon']} {r['outcome']}","보유일":f"{r['hold_days']}일"
-            } for r in bt["results"]]),use_container_width=True,hide_index=True,height=200)
+            } for r in bt["results"]]),width='stretch',hide_index=True,height=200)
 
 with tab4:
     # ════════════════════════════════════════════
