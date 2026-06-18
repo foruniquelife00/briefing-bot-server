@@ -196,7 +196,10 @@ def analyze(market_data: dict) -> str:
     )
 
     briefing = message.content[0].text
-    trust = calculate_trust_score(briefing, market_data)
+    # 명시 가드: 섹터 관찰 예시 섹션은 trust_score 계산 입력에서 제외 (GPT 2026-06-18)
+    from performance import strip_sector_example
+    briefing_for_trust = strip_sector_example(briefing)
+    trust = calculate_trust_score(briefing_for_trust, market_data)
     trust_report = format_trust_report(trust)
     fixed, report = validate_briefing(briefing, market_data.get("top_candidates", market_data.get("stocks", {})))
     gpt_verify = verify_briefing(briefing, market_data)

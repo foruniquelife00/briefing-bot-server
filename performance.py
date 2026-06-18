@@ -36,9 +36,30 @@ def init_db():
     return conn
 
 
+# 섹터 관찰 예시 고정 문구 (GPT 2026-06-18 명시 가드)
+SECTOR_EXAMPLE_MARKER = "섹터 관찰 예시입니다"
+
+
+def strip_sector_example(text: str) -> str:
+    """
+    섹터 관찰 예시 블록 제거 (추천/trust/G3와 코드 레벨 분리).
+    고정 문구 줄부터 다음 섹션(번호 항목/헤더)까지 제거해, 예시 종목이
+    추천 파싱·trust 계산에 절대 들어가지 않도록 한다.
+    """
+    if SECTOR_EXAMPLE_MARKER not in text:
+        return text
+    return re.sub(
+        r"아래 종목은 매수 후보가 아니라.*?(?=\n\s*\d+[\.\)]|\n[#⚠️🧭🔗5-9]|\Z)",
+        "", text, flags=re.DOTALL,
+    )
+
+
 def extract_recommendation(briefing_text: str, stocks: dict) -> dict:
-    """브리핑 텍스트에서 추천 종목 정보 추출"""
+    """브리핑 텍스트에서 추천 종목 정보 추출 (섹터 관찰 예시는 명시 제외)"""
     from watchlist import STOCK_MAP
+
+    # 명시 가드: 섹터 관찰 예시 섹션은 추천 파싱 대상에서 제거
+    briefing_text = strip_sector_example(briefing_text)
 
     result = {}
     search_text = briefing_text
