@@ -1,0 +1,9 @@
+[Unit]
+Description=Trigger briefing review at 17:50 KST (Mon-Fri)
+
+[Timer]
+OnCalendar=Mon-Fri 17:50 Asia/Seoul
+Persistent=false
+
+[Install]
+WantedBy=timers.target

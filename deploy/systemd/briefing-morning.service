@@ -1,0 +1,12 @@
+[Unit]
+Description=Briefing Bot - Morning briefing (06:50 KST, oneshot)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/root/briefing-bot-server
+ExecStart=/usr/bin/python3 /root/briefing-bot-server/bot.py briefing
+TimeoutStartSec=600
+StandardOutput=append:/root/briefing-bot-server/timer.log
+StandardError=append:/root/briefing-bot-server/timer.log

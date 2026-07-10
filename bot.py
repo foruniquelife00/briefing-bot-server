@@ -300,16 +300,15 @@ def run_git_backup():
 
 
 def run_scheduler():
-    # KST 06:50 = UTC 21:50 (시그널봇 07:00보다 먼저: 시장배경 → 관심종목 순서)
-    schedule.every().day.at("21:50").do(run_briefing)
+    # ⚠ 일일 브리핑(06:50)·복기(17:50)는 systemd timer로 이관 (GPT B안, 2026-07-10)
+    #   briefing-morning.timer / briefing-review.timer — schedule 좀비 재발(06-26, 07-07~) 대응.
+    #   여기 다시 추가하면 timer와 중복 발송됨. 간격·주간·백업 작업만 schedule 유지.
     schedule.every().monday.at("21:50").do(run_weekly)
     schedule.every().friday.at("14:00").do(run_friday)
     schedule.every().day.at("21:50").do(run_monthly_if_first)
     schedule.every(30).minutes.do(run_alert_if_market_open)
     schedule.every(60).minutes.do(run_event_detection_if_daytime)
     schedule.every().day.at("01:00").do(run_git_backup)
-    # KST 17:50 = UTC 08:50 — 아침 브리핑 복기 (DB 기록만)
-    schedule.every().day.at("08:50").do(run_briefing_review)
 
     logging.info("스케줄러 시작 — KST 07:30 브리핑 / 30분마다 알림")
     print("스케줄러 시작 — KST 07:30 브리핑 / 30분마다 알림")
@@ -348,21 +347,8 @@ def main():
     except Exception as e:
         logging.error(f"명령어 등록 오류: {e}")
 
-    # 시작 시 오늘 브리핑 없으면 즉시 실행
-    import sqlite3 as _sqlite3
-    from datetime import datetime as _dt, timezone as _tz, timedelta as _td
-    _kst = _dt.now(_tz(_td(hours=9)))
-    _today = _kst.strftime("%Y-%m-%d")
-    if _kst.weekday() < 5:
-        try:
-            _conn = _sqlite3.connect(config.DB_PATH)
-            _row = _conn.execute("SELECT id FROM briefing_history WHERE date = ?", (_today,)).fetchone()
-            _conn.close()
-            if not _row:
-                logging.info("오늘 브리핑 없음 → 즉시 실행")
-                threading.Thread(target=run_briefing, daemon=True).start()
-        except Exception as _e:
-            logging.error(f"브리핑 체크 오류: {_e}")
+    # (제거됨 2026-07-10) 시작 시 자동 브리핑 — restart 때 중복 발송의 원인이었고,
+    # 브리핑은 이제 briefing-morning.timer가 06:50에 확실히 실행 (놓친 날은 timer 수동 start)
 
     # 스케줄러 백그라운드 스레드
     t = threading.Thread(target=run_scheduler, daemon=True)
@@ -387,7 +373,14 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    import sys as _sys
+    # oneshot 모드 (systemd timer용, GPT B안): python3 bot.py briefing|review
+    if len(_sys.argv) > 1 and _sys.argv[1] == "briefing":
+        _validate_config(); run_briefing()
+    elif len(_sys.argv) > 1 and _sys.argv[1] == "review":
+        _validate_config(); run_briefing_review()
+    else:
+        main()
 
 
 import requests

@@ -1,0 +1,10 @@
+[Unit]
+Description=Trigger morning briefing at 06:50 KST (Mon-Fri)
+# GPT B안 (2026-07-10): schedule 좀비 재발 대응 — 핵심 브리핑만 timer 이관
+
+[Timer]
+OnCalendar=Mon-Fri 06:50 Asia/Seoul
+Persistent=false
+
+[Install]
+WantedBy=timers.target
