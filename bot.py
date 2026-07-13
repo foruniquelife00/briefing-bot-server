@@ -181,19 +181,26 @@ def run_briefing():
         logging.info("주말 — 브리핑 건너뜀")
         return
     logging.info("브리핑 시작")
+    print("[브리핑] 시작", flush=True)   # oneshot timer.log 추적용
     try:
         from collector  import get_market_data
         from analyzer   import analyze_and_save
         from sender     import send_telegram, send_email
         from datetime   import datetime as dt
         data    = get_market_data()
+        print("[브리핑] 수집 완료 → 분석 시작", flush=True)
         msg     = analyze_and_save(data)
+        print("[브리핑] 분석 완료 → 발송", flush=True)
         tg_ok   = send_telegram(msg)
         subject = f"📊 투자 브리핑 | {dt.now().strftime('%Y-%m-%d (%a)')}"
         em_ok   = send_email(subject, msg)
         logging.info(f"브리핑 텔레그램={'성공' if tg_ok else '실패'} / 이메일={'성공' if em_ok else '실패'}")
+        print(f"[브리핑] 텔레그램={'성공' if tg_ok else '실패'} / 이메일={'성공' if em_ok else '실패'}", flush=True)
     except Exception as e:
+        import traceback
         logging.error(f"브리핑 오류: {e}")
+        print(f"[브리핑] 오류: {e}", flush=True)
+        traceback.print_exc()   # timer.log에 전체 traceback
 
 def run_monthly_if_first():
     from datetime import datetime, timezone
@@ -377,6 +384,19 @@ if __name__ == "__main__":
     # oneshot 모드 (systemd timer용, GPT B안): python3 bot.py briefing|review
     if len(_sys.argv) > 1 and _sys.argv[1] == "briefing":
         _validate_config(); run_briefing()
+        # 성공 검증: 오늘 브리핑이 DB에 없으면 exit 1 → systemd FAILURE
+        # (07-13 '조용한 실패' 재발 방지 — 실패는 반드시 보이게)
+        from datetime import datetime as _dt, timezone as _tz, timedelta as _td
+        import sqlite3 as _sq
+        _kst = _dt.now(_tz(_td(hours=9)))
+        if _kst.weekday() < 5:   # 평일인데
+            _c = _sq.connect(config.DB_PATH)
+            _ok = _c.execute("SELECT 1 FROM briefing_history WHERE date=?",
+                             (_kst.strftime("%Y-%m-%d"),)).fetchone()
+            _c.close()
+            if not _ok:
+                print("[브리핑] 실패 — briefing_history에 오늘 기록 없음 (exit 1)", flush=True)
+                _sys.exit(1)
     elif len(_sys.argv) > 1 and _sys.argv[1] == "review":
         _validate_config(); run_briefing_review()
     else:
