@@ -1,3 +1,4 @@
+import logging
 import anthropic
 import config
 from datetime import datetime
@@ -199,10 +200,24 @@ def analyze(market_data: dict) -> str:
     # 명시 가드: 섹터 관찰 예시 섹션은 trust_score 계산 입력에서 제외 (GPT 2026-06-18)
     from performance import strip_sector_example
     briefing_for_trust = strip_sector_example(briefing)
-    trust = calculate_trust_score(briefing_for_trust, market_data)
-    trust_report = format_trust_report(trust)
-    fixed, report = validate_briefing(briefing, market_data.get("top_candidates", market_data.get("stocks", {})))
-    gpt_verify = verify_briefing(briefing, market_data)
+    # 부가 기능 실패가 브리핑 전체를 죽이지 않도록 격리 (07-22 사고: trust_score의
+    # float('') 하나로 브리핑 미발송). 실패 시 브리핑 본문은 그대로 발송하고 사유만 표기.
+    try:
+        trust = calculate_trust_score(briefing_for_trust, market_data)
+        trust_report = format_trust_report(trust)
+    except Exception as e:
+        logging.error(f"신뢰도 점수 계산 실패(브리핑은 계속): {e}", exc_info=True)
+        trust_report = "\n\n※ 신뢰도 점수 산정 실패 (데이터 이상) — 브리핑 본문은 정상"
+    try:
+        fixed, report = validate_briefing(briefing, market_data.get("top_candidates", market_data.get("stocks", {})))
+    except Exception as e:
+        logging.error(f"브리핑 검증 실패(본문 유지): {e}", exc_info=True)
+        fixed, report = briefing, ""
+    try:
+        gpt_verify = verify_briefing(briefing, market_data)
+    except Exception as e:
+        logging.error(f"GPT 교차검증 실패(본문 유지): {e}", exc_info=True)
+        gpt_verify = ""
     return fixed + report + gpt_verify + trust_report
 
 

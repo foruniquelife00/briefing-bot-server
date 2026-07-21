@@ -65,8 +65,21 @@ def get_historical_returns() -> list:
     return returns
 
 
+def _to_float(raw):
+    """'1,234.5' → 1234.5 / 빈 값·기호만 있으면 None
+    (07-22 사고: KRX 장애로 수치가 비면 float('')가 브리핑 전체를 죽였음)"""
+    if raw is None:
+        return None
+    s = str(raw).replace(",", "").strip()
+    try:
+        v = float(s)
+    except (TypeError, ValueError):
+        return None
+    return v
+
+
 def calc_data_accuracy(briefing_text: str, market_data: dict) -> int:
-    """수치 정확도 점수 (0~30점)"""
+    """수치 정확도 점수 (0~30점) — 파싱 실패는 감점 없이 통과(점수 산정 불가일 뿐)"""
     score = 30
     deduct = 0
 
@@ -75,21 +88,23 @@ def calc_data_accuracy(briefing_text: str, market_data: dict) -> int:
     if kospi_actual and kospi_actual != "N/A":
         kospi_match = re.search(r'코스피.*?([\d,]+\.?\d*)', briefing_text)
         if kospi_match:
-            briefing_val = float(kospi_match.group(1).replace(",", ""))
-            actual_val   = float(kospi_actual.replace(",", ""))
-            diff_pct     = abs(briefing_val - actual_val) / actual_val * 100
-            if diff_pct > 5:
-                deduct += 10
+            briefing_val = _to_float(kospi_match.group(1))
+            actual_val   = _to_float(kospi_actual)
+            if briefing_val is not None and actual_val:      # 0·None 모두 배제
+                diff_pct = abs(briefing_val - actual_val) / actual_val * 100
+                if diff_pct > 5:
+                    deduct += 10
 
     # 목표가 범위 확인
     price_match  = re.search(r'현재가[:\s]*\$?([\d,]+)', briefing_text)
     target_match = re.search(r'목표가[:\s]*\$?([\d,]+)', briefing_text)
     if price_match and target_match:
-        price  = float(price_match.group(1).replace(",", ""))
-        target = float(target_match.group(1).replace(",", ""))
-        rate   = (target - price) / price * 100
-        if rate < 5 or rate > 30:
-            deduct += 10
+        price  = _to_float(price_match.group(1))
+        target = _to_float(target_match.group(1))
+        if price and target is not None:
+            rate = (target - price) / price * 100
+            if rate < 5 or rate > 30:
+                deduct += 10
 
     return max(0, score - deduct)
 
