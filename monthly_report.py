@@ -205,7 +205,7 @@ def generate_monthly_report() -> str:
 
     message = client.messages.create(
         model=getattr(config, "CLAUDE_MODEL", "claude-sonnet-4-6"),
-        max_tokens=2500,
+        max_tokens=4000,   # 섹션 확장(시그널 운영현황 등)으로 증량 — 2500은 뒤가 잘림
         system=SYSTEM_PROMPT,
         messages=[{"role": "user", "content": prompt}]
     )

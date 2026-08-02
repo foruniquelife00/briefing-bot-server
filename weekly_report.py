@@ -167,7 +167,7 @@ def generate_weekly_briefing() -> str:
 
     message = client.messages.create(
         model=getattr(config, "CLAUDE_MODEL", "claude-sonnet-4-6"),
-        max_tokens=2500,
+        max_tokens=4000,   # 섹션 확장(시그널 운영현황 등)으로 증량 — 2500은 뒤가 잘림
         system=SYSTEM_PROMPT,
         messages=[{"role": "user", "content": prompt}]
     )
@@ -206,7 +206,9 @@ FRIDAY_SYSTEM_PROMPT = """당신은 시장 배경을 해석하는 거시 시장 
 ## 절대 규칙 (역할 경계)
 1. 개별 종목 추천/목표가/매수 의견 금지 (종목명은 시장 배경 설명용만)
 2. 지수 시나리오·섹터 흐름·리스크는 OK, 개별 종목 매수 판단은 시그널봇 역할
-3. 확정 예측 금지, 시나리오·관찰 포인트로 서술"""
+3. 확정 예측 금지, 시나리오·관찰 포인트로 서술
+4. 비중 조정·현금 비중 확대/축소·자산배분 지침·헤지 상품 편입 제안 금지 (설명까지만)
+시그널 시스템은 G3 paper-only(가상 검증)이며 실전 매매가 아니다."""
 
 
 def get_weekly_performance() -> str:
@@ -331,7 +333,7 @@ def generate_friday_briefing() -> str:
 
     message = client.messages.create(
         model=getattr(config, "CLAUDE_MODEL", "claude-sonnet-4-6"),
-        max_tokens=2500,
+        max_tokens=4000,   # 섹션 확장(시그널 운영현황 등)으로 증량 — 2500은 뒤가 잘림
         system=FRIDAY_SYSTEM_PROMPT,
         messages=[{"role": "user", "content": prompt}]
     )
