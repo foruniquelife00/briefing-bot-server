@@ -8,9 +8,10 @@ from sender import send_all
 
 client = anthropic.Anthropic(api_key=config.ANTHROPIC_API_KEY)
 
-SYSTEM_PROMPT = """당신은 세계 최고 수준의 투자 애널리스트입니다.
-30년 이상 실전 투자 경험. 매월 1일 지난달 성과를 냉철하게 분석하고
-다음 달 전략을 제시합니다. 5천만원 운용 기준."""
+SYSTEM_PROMPT = """당신은 시장 정보와 시스템 운영 현황을 설명하는 브리핑 분석가입니다.
+사실, 데이터, 시장 배경, 위험요인을 정리합니다.
+종목 추천, 매매 지시, 비중 조정, 헤지 상품 편입, 자산배분 지침을 제공하지 않습니다.
+시그널봇의 검증 상태와 위험 게이트를 존중하며 이를 우회하지 않습니다."""
 
 
 def get_monthly_performance() -> dict:
@@ -122,6 +123,13 @@ def generate_monthly_report() -> str:
     market = get_monthly_market()
     today  = datetime.now(timezone(timedelta(hours=9))).strftime("%Y년 %m월 %d일")
 
+    # 시그널봇 운영상태 (읽기 전용 단방향 — §5). 실패 시 '확인 불가' 문자열.
+    try:
+        from signal_status import format_signal_status
+        signal_status = format_signal_status()
+    except Exception as e:
+        signal_status = f"시그널 시스템 운영상태 데이터 확인 불가 ({type(e).__name__})"
+
     # 공포탐욕지수
     try:
         res = requests.get("https://api.alternative.me/fng/", timeout=10)
@@ -166,21 +174,34 @@ def generate_monthly_report() -> str:
 상세:
 {rec_str}
 
+## 🔒 시그널 시스템 운영 현황 (사실 데이터 — 임의 추정 금지)
+{signal_status}
+
 ## 📝 월간 리포트 형식
-1. 📌 {perf.get('month', '지난달')} 한줄 총평
+1. 📌 {perf.get('month', '지난달')} 한줄 총평 (사실 요약)
 2. 📊 시장 분석 (지난달 주요 흐름 3~4줄)
-3. 📈 추천 종목 성과 분석
+3. 📈 기록된 종목 성과 분석
    - 잘된 점
    - 아쉬운 점
-   - 개선할 점
-4. 💼 포트폴리오 월간 수익률 추정
-5. 🔍 이번 달 주요 변수 및 전망
-6. 🧭 이번 달 투자 전략
-   - 집중 섹터
-   - 비중 조정안
-   - 헤지 전략
-7. ⭐ 이번 달 주목 종목 3개
-8. 💬 애널리스트 월간 한마디"""
+   - 데이터상 관찰된 특징 (개선 '지시'가 아니라 관찰 사실로 기술)
+4. 💼 월간 수익률 기록 요약
+5. 🔍 이번 달 주요 변수 및 위험요인
+6. 🧭 다음 달 시장 관찰 포인트
+   - 주요 일정
+   - 시장 위험요인
+   - 환율·금리·원자재 확인 항목
+   - 변동성 확대 시 유의사항
+7. 🔒 시그널 시스템 운영 현황
+   (위 '시그널 시스템 운영 현황' 데이터를 그대로 정리. 없으면 '확인 불가'로 표기)
+8. 💬 브리핑 한마디 (사실 기반 마무리)
+
+## ⛔ 반드시 지킬 것 (역할 경계)
+- 종목 추천, 매수·매도 지시, 목표가·손절가 제시 금지
+- 비중 조정안, 현금 비중 확대·축소 지시 금지
+- 인버스·레버리지·헤지 상품 편입 제안 금지
+- 분할매수 트리거, 자산배분 지침 금지
+- 환율·금리는 '설명'까지만. "환율 오르면 비중 줄여라" 같은 지시 금지
+- 시그널 시스템은 G3 paper-only(가상 검증)이며 실전 매매가 아님을 전제로 서술"""
 
     message = client.messages.create(
         model=getattr(config, "CLAUDE_MODEL", "claude-sonnet-4-6"),
@@ -196,16 +217,45 @@ def generate_monthly_report() -> str:
 
 
 def send_monthly_report():
-    """월간 성과 리포트 발송"""
+    """
+    월간 리포트 발송 — 발송 전 역할 경계 검사 (§7).
+    검사 실패 시 Telegram 발송 금지, status=blocked_role_boundary 기록.
+    """
     print("월간 리포트 생성 중...")
     try:
-        msg    = generate_monthly_report()
-        today  = datetime.now(timezone(timedelta(hours=9))).strftime("%Y.%m")
-        result = send_all(msg, subject=f"📅 {today} 월간 투자 성과 리포트")
+        msg   = generate_monthly_report()
+        today = datetime.now(timezone(timedelta(hours=9))).strftime("%Y.%m")
+
+        # ── 발송 전 안전 검사 (§7) ──
+        from role_boundary import check_role_boundary, ensure_disclaimer
+        chk = check_role_boundary(msg)
+        if not chk["ok"]:
+            reason = "; ".join(f"{v['type']}: {v['evidence']}" for v in chk["violations"])
+            _log_blocked(today, msg, reason)
+            print(f"⛔ 발송 차단 (blocked_role_boundary) — 위반 {len(chk['violations'])}건")
+            for v in chk["violations"]:
+                print(f"   · {v['type']}: {v['evidence']}")
+            return {"status": "blocked_role_boundary", "violations": chk["violations"]}
+
+        msg = ensure_disclaimer(msg)                      # 면책 문구 (§8)
+        result = send_all(msg, subject=f"📅 {today} 월간 리포트")
         print(f"텔레그램: {'✅' if result['telegram'] else '❌'}")
         print(f"이메일:   {'✅' if result['email'] else '❌'}")
+        return {"status": "sent", **result}
     except Exception as e:
         print(f"월간 리포트 오류: {e}")
+        return {"status": "error", "error": str(e)}
+
+
+def _log_blocked(month: str, original: str, reason: str):
+    """차단 시 원문·사유를 내부 로그에 보존 (§7)"""
+    import os
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "role_boundary_blocked.log")
+    ts = datetime.now(timezone(timedelta(hours=9))).strftime("%Y-%m-%d %H:%M:%S KST")
+    with open(path, "a", encoding="utf-8") as f:
+        f.write(f"\n{'='*70}\n[{ts}] month={month}\n"
+                f"status=blocked_role_boundary\nfailure_reason={reason}\n"
+                f"{'-'*70}\n{original}\n")
 
 
 if __name__ == "__main__":
