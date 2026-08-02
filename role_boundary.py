@@ -41,9 +41,14 @@ BANNED_PATTERNS = [
     (r"(분할\s*매수|물타기|추가\s*매수)\s*\S{0,8}\s*(트리거|시점|전략|권|하)", "분할매수 지시"),
     # 목표가·손절가 제시
     (r"(목표가|목표\s*주가|손절가|손절\s*라인)\s*[:은는]?\s*[\d,]+", "목표가·손절가 제시"),
-    # 종목 추천 (종목명 + 지시)
+    # 종목 추천 — '종목/주식' 단어가 있는 형태
     (rf"(종목|주식)\s*\S{{0,6}}\s*(추천|주목|담|편입)\s*\S{{0,4}}\s*(합니다|드립니다|권|하세요)",
      "종목 추천"),
+    # 종목 추천 — 종목명이 직접 나오는 형태 ("삼성전자와 SK하이닉스를 추천합니다")
+    # 종목명을 열거할 수 없으므로 '추천 행위 표현' 자체를 탐지. 설명 맥락은 예외로 걸러짐.
+    (r"(추천|매수\s*의견|비중\s*확대\s*의견)\s*(합니다|드립니다|드려요|해\s*드립|입니다|종목)",
+     "종목 추천"),
+    (r"(를|을|이|가)\s*(추천|주목|매수|편입)\s*(합니다|드립니다|하세요|하시)", "종목 추천"),
     # 환율 연동 자산배분 (§6)
     (rf"(환율|원/달러|달러)\s*\S{{0,10}}\s*(상승|하락|강세|약세)\s*\S{{0,12}}\s*"
      rf"(비중|자산|주식|편입|{DIRECTIVE})", "환율 연동 자산배분 지시"),
@@ -106,6 +111,42 @@ def check_role_boundary(text: str) -> dict:
             seen.add(k); uniq.append(v)
 
     return {"ok": len(uniq) == 0, "violations": uniq, "checked": len(sentences)}
+
+
+# ── audit-only 모드 (§4 일간 브리핑) ────────────────────────
+# 5거래일간 '기록만' 하고 발송은 유지한다. 다만 아래 HARD 유형은 audit 기간에도 즉시 차단.
+HARD_BLOCK_TYPES = {
+    "매수·매도 지시",
+    "인버스·레버리지·헤지 편입 제안",
+    "비중·현금 조정 지시",
+    "목표가·손절가 제시",
+    "종목 추천",
+    "환율 연동 자산배분 지시",
+}
+
+
+def audit_only(text: str, tag: str, log_path: str = None) -> dict:
+    """
+    일간 브리핑용 — 검사 결과를 기록하되 발송은 막지 않는다 (§4 1단계).
+    반환: {"send_ok": bool, "violations": [...]}
+      send_ok=False는 HARD_BLOCK_TYPES에 해당하는 명백한 위반일 때만.
+    """
+    import os
+    from datetime import datetime, timezone, timedelta
+    r = check_role_boundary(text)
+    hard = [v for v in r["violations"] if v["type"] in HARD_BLOCK_TYPES]
+
+    if r["violations"]:
+        path = log_path or os.path.join(
+            os.path.dirname(os.path.abspath(__file__)), "role_boundary_audit.log")
+        ts = datetime.now(timezone(timedelta(hours=9))).strftime("%Y-%m-%d %H:%M:%S KST")
+        with open(path, "a", encoding="utf-8") as f:
+            f.write(f"\n[{ts}] tag={tag} mode=audit-only "
+                    f"violations={len(r['violations'])} hard={len(hard)}\n")
+            for v in r["violations"]:
+                mark = "HARD" if v["type"] in HARD_BLOCK_TYPES else "soft"
+                f.write(f"  [{mark}] {v['type']}: {v['evidence']}\n")
+    return {"send_ok": len(hard) == 0, "violations": r["violations"], "hard": hard}
 
 
 def ensure_disclaimer(text: str) -> str:

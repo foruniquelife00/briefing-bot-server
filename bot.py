@@ -191,6 +191,27 @@ def run_briefing():
         print("[브리핑] 수집 완료 → 분석 시작", flush=True)
         msg     = analyze_and_save(data)
         print("[브리핑] 분석 완료 → 발송", flush=True)
+
+        # ── 역할 경계 audit-only (GPT 20260802 §4 1단계) ──
+        # 5거래일간 기록만 하고 발송 유지. 단 HARD 유형(종목추천·매매지시·비중조정
+        # ·인버스편입·목표가)은 audit 기간에도 즉시 차단.
+        try:
+            from role_boundary import audit_only
+            from datetime import datetime as _dt
+            a = audit_only(msg, f"daily_{_dt.now().strftime('%Y%m%d')}")
+            if a["violations"]:
+                logging.warning(f"[역할경계 audit] 위반 {len(a['violations'])}건 "
+                                f"(HARD {len(a['hard'])}) — role_boundary_audit.log 참조")
+                print(f"[브리핑] 역할경계 audit: 위반 {len(a['violations'])}건 "
+                      f"(HARD {len(a['hard'])})", flush=True)
+            if not a["send_ok"]:
+                logging.error(f"[역할경계] HARD 위반으로 발송 차단: "
+                              f"{[v['type'] for v in a['hard']]}")
+                print("[브리핑] ⛔ HARD 위반 — 발송 차단 (blocked_role_boundary)", flush=True)
+                return
+        except Exception as _re:
+            logging.error(f"[역할경계 audit] 검사 오류(발송은 진행): {_re}")
+
         tg_ok   = send_telegram(msg)
         subject = f"📊 투자 브리핑 | {dt.now().strftime('%Y-%m-%d (%a)')}"
         em_ok   = send_email(subject, msg)
