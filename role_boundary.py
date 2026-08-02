@@ -62,6 +62,22 @@ EXPLANATORY = [
     "설명", "의미합니다", "뜻합니다", "배경", "원인", "때문",
 ]
 
+# ── 4b. 부정·금지·동결 맥락 (필수 예외) ──────────────────────
+#    2026-08-02 실제 생성물에서 발견: 면책 문구와 동결 항목 설명이 차단됐다.
+#    "종목 추천, 매매 지시, 비중 조정을 포함하지 않습니다" ← 이것 자체가 걸림.
+#    금지 행위를 '하지 않는다'고 밝히는 문장은 위반이 아니라 오히려 준수 표현이다.
+NEGATION = [
+    "않습니다", "않음", "않는다", "않으며", "않고", "없습니다", "없음", "아닙니다",
+    "아니라", "아니며", "금지", "동결", "제외", "무관", "불가", "미수집", "미제공",
+    "제공하지", "포함하지", "생성하지", "지양", "삼가", "배제",
+]
+
+# ── 4c. 데이터 라벨 예외 ─────────────────────────────────────
+#    "추천 종목 성과", "추천 종목 평균 수익률" 등은 과거 기록의 지표명이지 추천 행위가 아니다.
+DATA_LABEL = [
+    "성과", "수익률", "데이터", "기록", "표본", "건수", "통계", "집계", "미수집", "없음",
+]
+
 DISCLAIMER = (
     "본 리포트는 시장 정보와 시스템 운영 현황을 설명합니다.\n"
     "종목 추천, 매매 지시 또는 자산배분 지침을 제공하지 않습니다."
@@ -71,6 +87,16 @@ DISCLAIMER = (
 def _is_explanatory(sentence: str) -> bool:
     """설명·사실 기술 맥락인지 (지시가 아닌지)"""
     return any(w in sentence for w in EXPLANATORY)
+
+
+def _is_negated(sentence: str) -> bool:
+    """금지·부정·동결을 밝히는 문장인지 (준수 표현 — 위반 아님)"""
+    return any(w in sentence for w in NEGATION)
+
+
+def _is_data_label(sentence: str) -> bool:
+    """'추천 종목 성과' 처럼 과거 기록의 지표명인지 (추천 행위 아님)"""
+    return any(w in sentence for w in DATA_LABEL)
 
 
 def check_role_boundary(text: str) -> dict:
@@ -85,6 +111,9 @@ def check_role_boundary(text: str) -> dict:
         s = line.strip()
         # 제목 형태만 (번호·이모지·불릿으로 시작하거나 짧은 줄)
         if len(s) <= 40 and (re.match(r"^[\d#\-•*🧭⭐📌📊💼🔍💬]", s) or s.endswith(":")):
+            # 부정·동결 선언이거나 데이터 라벨이면 섹션 위반이 아니다
+            if _is_negated(s) or _is_data_label(s):
+                continue
             for b in BANNED_SECTIONS:
                 if b in s:
                     violations.append({"type": "금지 섹션", "evidence": s[:60]})
@@ -96,8 +125,9 @@ def check_role_boundary(text: str) -> dict:
         s = sent.strip()
         if len(s) < 6:
             continue
-        if _is_explanatory(s):
-            continue                     # 사실 기술은 허용
+        # 사실 기술 / 금지·동결 선언 / 데이터 라벨은 위반이 아니다
+        if _is_explanatory(s) or _is_negated(s):
+            continue
         for pat, label in BANNED_PATTERNS:
             if re.search(pat, s):
                 violations.append({"type": label, "evidence": s[:70]})
