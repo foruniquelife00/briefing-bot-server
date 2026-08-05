@@ -208,6 +208,21 @@ def run_briefing():
                 logging.error(f"[역할경계] HARD 위반으로 발송 차단: "
                               f"{[v['type'] for v in a['hard']]}")
                 print("[브리핑] ⛔ HARD 위반 — 발송 차단 (blocked_role_boundary)", flush=True)
+                # ★ 차단을 조용히 넘기지 않는다 (2026-08-05 사고).
+                #   8/3·8/5 브리핑이 차단됐으나 사용자에게 아무 알림이 없었고,
+                #   briefing_history에는 기록이 남아 systemd도 성공으로 판정했다.
+                #   → 최소한 '왜 안 왔는지'는 알려야 한다.
+                try:
+                    from sender import send_telegram
+                    types = ", ".join(sorted({v["type"] for v in a["hard"]}))
+                    send_telegram(
+                        "⛔ <b>브리핑 발송 차단</b> (역할 경계)\n"
+                        f"사유: {types}\n"
+                        "브리핑이 매매 지시성 문구를 포함해 자동 차단됐습니다.\n"
+                        "원문은 서버 role_boundary_audit.log 참조.\n"
+                        "※ 오탐일 수 있습니다 — 확인 후 검사기 조정 필요")
+                except Exception as _ne:
+                    logging.error(f"[역할경계] 차단 알림 발송 실패: {_ne}")
                 return
         except Exception as _re:
             logging.error(f"[역할경계 audit] 검사 오류(발송은 진행): {_re}")
