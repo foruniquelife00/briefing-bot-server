@@ -192,51 +192,84 @@ def run_briefing():
         msg     = analyze_and_save(data)
         print("[브리핑] 분석 완료 → 발송", flush=True)
 
-        # ── 역할 경계 audit-only (GPT 20260802 §4 1단계) ──
-        # 5거래일간 기록만 하고 발송 유지. 단 HARD 유형(종목추천·매매지시·비중조정
-        # ·인버스편입·목표가)은 audit 기간에도 즉시 차단.
-        try:
-            from role_boundary import audit_only
-            from datetime import datetime as _dt
-            a = audit_only(msg, f"daily_{_dt.now().strftime('%Y%m%d')}")
-            if a["violations"]:
-                logging.warning(f"[역할경계 audit] 위반 {len(a['violations'])}건 "
-                                f"(HARD {len(a['hard'])}) — role_boundary_audit.log 참조")
-                print(f"[브리핑] 역할경계 audit: 위반 {len(a['violations'])}건 "
-                      f"(HARD {len(a['hard'])})", flush=True)
-            if not a["send_ok"]:
-                logging.error(f"[역할경계] HARD 위반으로 발송 차단: "
-                              f"{[v['type'] for v in a['hard']]}")
-                print("[브리핑] ⛔ HARD 위반 — 발송 차단 (blocked_role_boundary)", flush=True)
-                # ★ 차단을 조용히 넘기지 않는다 (2026-08-05 사고).
-                #   8/3·8/5 브리핑이 차단됐으나 사용자에게 아무 알림이 없었고,
-                #   briefing_history에는 기록이 남아 systemd도 성공으로 판정했다.
-                #   → 최소한 '왜 안 왔는지'는 알려야 한다.
-                try:
-                    from sender import send_telegram
-                    types = ", ".join(sorted({v["type"] for v in a["hard"]}))
-                    send_telegram(
-                        "⛔ <b>브리핑 발송 차단</b> (역할 경계)\n"
-                        f"사유: {types}\n"
-                        "브리핑이 매매 지시성 문구를 포함해 자동 차단됐습니다.\n"
-                        "원문은 서버 role_boundary_audit.log 참조.\n"
-                        "※ 오탐일 수 있습니다 — 확인 후 검사기 조정 필요")
-                except Exception as _ne:
-                    logging.error(f"[역할경계] 차단 알림 발송 실패: {_ne}")
-                return
-        except Exception as _re:
-            logging.error(f"[역할경계 audit] 검사 오류(발송은 진행): {_re}")
+        # ── 역할 경계 C+ 하이브리드 (GPT 20260807 §2) ──
+        #   독립 1~2줄 위반 → 그 줄만 제거 후 발송 (sent_redacted)
+        #   섹션제목/연속줄/3줄이상/문맥붕괴 → 전체 차단 (blocked_role_boundary)
+        #   검사기 오류 → fail-safe 전체 차단
+        # 발송 결과는 briefing_delivery_log에 기록한다 (§3 — history는 생성 증거일 뿐).
+        from role_boundary import apply_cplus, audit_only
+        from datetime import datetime as _dt
+        import delivery_status as DS
+        _tag = f"daily_{_dt.now(timezone(timedelta(hours=9))).strftime('%Y%m%d')}"
+        _rec = {"kind": "daily", "generated_ok": 1, "role_boundary_checked": 1}
 
+        cp = apply_cplus(msg)
+        audit_only(msg, _tag)                       # 오탐·정탐 사례는 계속 기록 (§4)
+        _rec["role_boundary_action"] = cp["action"]
+        _rec["violation_types"] = ", ".join(sorted({v["type"] for v in cp["violations"]})) or None
+        _rec["redacted_count"] = len(cp["removed"])
+
+        if cp["action"] == "block":
+            logging.error(f"[역할경계] 전체 차단: {cp['reason']} / "
+                          f"{[v['type'] for v in cp['violations']]}")
+            print(f"[브리핑] ⛔ 전체 차단 — {cp['reason']}", flush=True)
+            notified = 0
+            try:
+                types = ", ".join(sorted({v["type"] for v in cp["violations"]}))
+                notified = int(bool(send_telegram(
+                    "⛔ <b>브리핑 발송 차단</b> (역할 경계 C+)\n"
+                    f"사유: {cp['reason']}\n유형: {types}\n"
+                    "매매 지시성 문구가 제거로 해결되지 않아 전체 차단됐습니다.\n"
+                    "원문은 서버 role_boundary_audit.log 참조.\n"
+                    "※ 오탐일 수 있습니다 — 확인 후 검사기 조정 필요")))
+            except Exception as _ne:
+                logging.error(f"[역할경계] 차단 알림 발송 실패: {_ne}")
+            DS.record(final_delivery_status=DS.BLOCKED, notified=notified,
+                      detail=cp["reason"], **_rec)
+            return
+
+        if cp["action"] == "redact":
+            msg = cp["text"]
+            logging.warning(f"[역할경계] 부분 제거 후 발송: {len(cp['removed'])}줄 — "
+                            f"{[t for t, _ in cp['removed']]}")
+            print(f"[브리핑] ✂ {len(cp['removed'])}줄 제거 후 발송", flush=True)
+            try:
+                rm = "\n".join(f"· [{t}] {s[:60]}" for t, s in cp["removed"])
+                send_telegram("✂ <b>브리핑 일부 문장 제거</b> (역할 경계 C+)\n"
+                              "아래 문장이 매매지시성으로 판단돼 제거된 뒤 발송됩니다.\n"
+                              f"{rm}\n※ 오탐이면 알려주세요 — 검사기 조정 필요")
+            except Exception as _ne:
+                logging.error(f"[역할경계] 제거 알림 발송 실패: {_ne}")
+
+        # ── 발송 + 결과 기록 (§3) ──
         tg_ok   = send_telegram(msg)
         subject = f"📊 투자 브리핑 | {dt.now().strftime('%Y-%m-%d (%a)')}"
         em_ok   = send_email(subject, msg)
         logging.info(f"브리핑 텔레그램={'성공' if tg_ok else '실패'} / 이메일={'성공' if em_ok else '실패'}")
         print(f"[브리핑] 텔레그램={'성공' if tg_ok else '실패'} / 이메일={'성공' if em_ok else '실패'}", flush=True)
+
+        if tg_ok:
+            final = DS.SENT_REDACTED if cp["action"] == "redact" else DS.SENT_FULL
+            notified = 1 if cp["action"] == "redact" else 0
+        else:
+            final = DS.FAILED_DELIVERY
+            notified = 0
+            logging.error("[브리핑] 텔레그램 발송 실패 — failed_delivery")
+        DS.record(send_attempted=1, telegram_ok=int(bool(tg_ok)), email_ok=int(bool(em_ok)),
+                  final_delivery_status=final, notified=notified, **_rec)
+
     except Exception as e:
         import traceback
         logging.error(f"브리핑 오류: {e}")
         print(f"[브리핑] 오류: {e}", flush=True)
         traceback.print_exc()   # timer.log에 전체 traceback
+        # 생성/발송 어느 단계든 예외면 failed 로 남긴다 (조용한 실패 방지)
+        try:
+            import delivery_status as _DS
+            _DS.record(kind="daily", generated_ok=0,
+                       final_delivery_status=_DS.FAILED_GEN, detail=str(e)[:200])
+        except Exception:
+            pass
 
 def run_monthly_if_first():
     from datetime import datetime, timezone
@@ -420,18 +453,39 @@ if __name__ == "__main__":
     # oneshot 모드 (systemd timer용, GPT B안): python3 bot.py briefing|review
     if len(_sys.argv) > 1 and _sys.argv[1] == "briefing":
         _validate_config(); run_briefing()
-        # 성공 검증: 오늘 브리핑이 DB에 없으면 exit 1 → systemd FAILURE
-        # (07-13 '조용한 실패' 재발 방지 — 실패는 반드시 보이게)
+        # ── 성공 판정 (GPT 20260807 §3) ──
+        # ★ 기존 'briefing_history에 오늘 기록 있음 = 성공' 판정은 폐기했다.
+        #   history는 '생성 성공' 증거일 뿐 '발송 성공' 증거가 아니며,
+        #   2026-08-05 사고(차단 미발송인데 SUCCESS 판정)의 직접 원인이었다.
+        #   → briefing_delivery_log의 final_delivery_status로 판정한다.
         from datetime import datetime as _dt, timezone as _tz, timedelta as _td
         import sqlite3 as _sq
         _kst = _dt.now(_tz(_td(hours=9)))
-        if _kst.weekday() < 5:   # 평일인데
+        if _kst.weekday() < 5:   # 평일만 판정
+            import delivery_status as _DS
+            _DS.init_delivery_log()
             _c = _sq.connect(config.DB_PATH)
-            _ok = _c.execute("SELECT 1 FROM briefing_history WHERE date=?",
-                             (_kst.strftime("%Y-%m-%d"),)).fetchone()
+            _c.row_factory = _sq.Row
+            _r = _c.execute("SELECT * FROM briefing_delivery_log "
+                            "WHERE run_date=? AND kind='daily'",
+                            (_kst.strftime("%Y-%m-%d"),)).fetchone()
             _c.close()
-            if not _ok:
-                print("[브리핑] 실패 — briefing_history에 오늘 기록 없음 (exit 1)", flush=True)
+            if _r is None:
+                print("[브리핑] 실패 — 발송 기록 자체가 없음 (exit 1)", flush=True)
+                _sys.exit(1)
+            _st = _r["final_delivery_status"]
+            if _st in (_DS.SENT_FULL, _DS.SENT_REDACTED):
+                print(f"[브리핑] 성공 — {_st}", flush=True)
+            elif _st == _DS.BLOCKED:
+                # 차단은 '의도된 동작'이나 발송은 안 됐다.
+                # 알림까지 갔으면 silent failure가 아니므로 exit 0, 아니면 실패로 드러낸다.
+                if _r["notified"]:
+                    print("[브리핑] 차단됨(알림 발송 완료) — blocked_role_boundary", flush=True)
+                else:
+                    print("[브리핑] ⛔ 차단 + 알림 실패 = silent failure (exit 1)", flush=True)
+                    _sys.exit(1)
+            else:
+                print(f"[브리핑] 실패 — {_st} (exit 1)", flush=True)
                 _sys.exit(1)
     elif len(_sys.argv) > 1 and _sys.argv[1] == "review":
         _validate_config(); run_briefing_review()

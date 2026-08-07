@@ -33,8 +33,11 @@ DIRECTIVE = (
 
 # ── 3. 금지 행위 × 지시형 조합 (의미 기반) ───────────────────
 BANNED_PATTERNS = [
-    # 매수/매도 지시 — '과매수/과매도'는 기술적 지표 용어이므로 제외 (?<!과)
-    (rf"(?<!과)(매수|매도|사는|파는|진입|청산)\s*\S{{0,6}}\s*{DIRECTIVE}", "매수·매도 지시"),
+    # 매수/매도 지시
+    #   (?<!과) — '과매수/과매도'는 기술적 지표 용어
+    #   (?!세)  — '매수세/매도세'는 수급 사실 용어 ("매도세 확대"는 지시가 아니라 관측)
+    (rf"(?<!과)(매수|매도|사는|파는|진입|청산)(?!세)\s*\S{{0,6}}\s*{DIRECTIVE}",
+     "매수·매도 지시"),
     # 비중·현금 조절
     (rf"(비중|현금|포지션)\s*\S{{0,8}}\s*(확대|축소|늘리|줄이|조정|조절)", "비중·현금 조정 지시"),
     # 인버스·레버리지·헤지 상품 편입
@@ -190,3 +193,100 @@ def ensure_disclaimer(text: str) -> str:
     if DISCLAIMER.split("\n")[0] in text:
         return text
     return f"{text}\n\n{'─'*22}\n{DISCLAIMER}"
+
+
+# ══════════════════════════════════════════════════════════════
+# C+ 하이브리드 정책 (GPT_TO_CLAUDE_BRIEFING_DAILY_CPLUS_DECISION_20260807 §2)
+# ══════════════════════════════════════════════════════════════
+#   1) 독립된 위반 1~2줄 + 제거 후 문맥 유지  → 해당 줄만 제거하고 발송
+#   2) 섹션제목/전략블록/연속줄 위반, 3줄 이상 → 전체 차단
+#   3) 검사기 자체 오류                        → fail-safe 전체 차단
+#
+# ★ 문장이 아니라 '줄' 단위로 다룬다.
+#   브리핑 본문은 마크다운 불릿/표 형태라 줄이 의미 단위이고,
+#   줄 단위 제거가 원문 복원과 문맥 보존에 가장 안전하다.
+
+REDACT_NOTICE = (
+    "역할 경계 검사에서 매매지시성 문장 일부가 제거되었습니다.\n"
+    "시장 정보 본문은 그대로 제공되며, 종목 추천·매매 지시는 제공하지 않습니다."
+)
+
+MAX_REDACT_LINES = 2          # 이보다 많으면 전체 차단 (§2-2 '3문장 이상')
+
+
+def _line_violations(text: str):
+    """줄 단위 위반 탐지 → [(줄번호, 유형, 원문, is_section)]"""
+    out = []
+    for i, line in enumerate(text.split("\n")):
+        s = line.strip()
+        if len(s) < 6:
+            continue
+        if _is_explanatory(s) or _is_negated(s):
+            continue
+
+        # 섹션 제목 위반 (구조 위반 — 제거로 해결 안 됨)
+        is_title = len(s) <= 40 and (
+            re.match(r"^[\d#\-•*🧭⭐📌📊💼🔍💬]", s) or s.endswith(":"))
+        if is_title and not _is_data_label(s):
+            for b in BANNED_SECTIONS:
+                if b in s:
+                    out.append((i, "금지 섹션", s, True))
+                    break
+            if out and out[-1][0] == i:
+                continue
+
+        for pat, label in BANNED_PATTERNS:
+            if re.search(pat, s):
+                out.append((i, label, s, False))
+                break
+    return out
+
+
+def apply_cplus(text: str) -> dict:
+    """
+    C+ 판정. 반환:
+      action : "pass" | "redact" | "block"
+      text   : 발송할 본문 (redact면 제거·고지 반영본)
+      removed: 제거된 줄 [(유형, 원문)]
+      violations / hard : 탐지 결과
+      reason : 판정 사유 (로그·알림용)
+    """
+    try:
+        vio = _line_violations(text)
+    except Exception as e:                      # §2-3 검사기 오류 → fail-safe 차단
+        return {"action": "block", "text": text, "removed": [], "violations": [],
+                "hard": [], "reason": f"검사기 오류(fail-safe 차단): {type(e).__name__}: {e}"}
+
+    if not vio:
+        return {"action": "pass", "text": text, "removed": [], "violations": [],
+                "hard": [], "reason": "위반 없음"}
+
+    viols = [{"type": t, "evidence": s[:70]} for _, t, s, _ in vio]
+    hard = [v for v in viols if v["type"] in HARD_BLOCK_TYPES]
+
+    # ── 전체 차단 조건 (§2-2) ──
+    if any(is_title for *_, is_title in vio):
+        return {"action": "block", "text": text, "removed": [], "violations": viols,
+                "hard": hard, "reason": "섹션 제목/전략 블록 위반 — 제거로 해결 불가"}
+    if len(vio) > MAX_REDACT_LINES:
+        return {"action": "block", "text": text, "removed": [], "violations": viols,
+                "hard": hard, "reason": f"다중 위반 {len(vio)}건 (>{MAX_REDACT_LINES}) — 문맥 보존 불가"}
+    idxs = sorted(i for i, *_ in vio)
+    if len(idxs) >= 2 and any(b - a == 1 for a, b in zip(idxs, idxs[1:])):
+        return {"action": "block", "text": text, "removed": [], "violations": viols,
+                "hard": hard, "reason": "연속 줄 위반 — 제거 시 문맥 불완전"}
+
+    # ── 문장 제거 후 발송 (§2-1) ──
+    lines = text.split("\n")
+    removed = [(t, s) for _, t, s, _ in vio]
+    kept = [l for i, l in enumerate(lines) if i not in set(idxs)]
+    body = "\n".join(kept).rstrip()
+
+    # 제거 후 본문이 지나치게 줄면 문맥 유지 실패로 본다
+    if len(body) < len(text) * 0.6 or len(body) < 200:
+        return {"action": "block", "text": text, "removed": [], "violations": viols,
+                "hard": hard, "reason": "제거 후 본문 과소 — 문맥 유지 실패"}
+
+    body = f"{body}\n\n{'─'*22}\n{REDACT_NOTICE}"
+    return {"action": "redact", "text": body, "removed": removed, "violations": viols,
+            "hard": hard, "reason": f"독립 위반 {len(vio)}줄 제거 후 발송"}
