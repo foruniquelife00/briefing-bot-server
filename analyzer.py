@@ -191,7 +191,7 @@ def analyze(market_data: dict) -> str:
 
     message = client.messages.create(
         model=getattr(config, "CLAUDE_MODEL", "claude-sonnet-4-6"),
-        max_tokens=2000,
+        max_tokens=3500,   # 2000은 섹션 중간 절단 (2026-08-11 실측: '③ 이차'에서 끊김)
         system=SYSTEM_PROMPT,
         messages=[{"role": "user", "content": prompt}]
     )

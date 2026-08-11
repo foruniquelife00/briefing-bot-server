@@ -167,7 +167,7 @@ def generate_weekly_briefing() -> str:
 
     message = client.messages.create(
         model=getattr(config, "CLAUDE_MODEL", "claude-sonnet-4-6"),
-        max_tokens=4000,   # 섹션 확장(시그널 운영현황 등)으로 증량 — 2500은 뒤가 잘림
+        max_tokens=6000,   # 4000도 부족해 §8 중간 절단 (2026-08-11 실측)
         system=SYSTEM_PROMPT,
         messages=[{"role": "user", "content": prompt}]
     )
@@ -333,7 +333,7 @@ def generate_friday_briefing() -> str:
 
     message = client.messages.create(
         model=getattr(config, "CLAUDE_MODEL", "claude-sonnet-4-6"),
-        max_tokens=4000,   # 섹션 확장(시그널 운영현황 등)으로 증량 — 2500은 뒤가 잘림
+        max_tokens=6000,   # 4000도 부족해 §8 중간 절단 (2026-08-11 실측)
         system=FRIDAY_SYSTEM_PROMPT,
         messages=[{"role": "user", "content": prompt}]
     )
