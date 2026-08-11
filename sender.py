@@ -1,6 +1,6 @@
 import logging
 import smtplib
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 
@@ -70,7 +70,7 @@ def send_email(subject: str, message: str) -> bool:
 
 def send_all(message: str, subject: str | None = None) -> dict:
     if subject is None:
-        subject = f"Investment briefing {datetime.now().strftime('%Y.%m.%d')}"
+        subject = f"Investment briefing {datetime.now(timezone(timedelta(hours=9))).strftime('%Y.%m.%d')}"
 
     return {
         "telegram": send_telegram(message),

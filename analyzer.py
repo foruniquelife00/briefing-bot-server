@@ -1,7 +1,7 @@
 import logging
 import anthropic
 import config
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from eco_calendar import get_this_week_events, get_us_news_sentiment, format_sentiment
 from validator     import validate_briefing
 from cross_verify   import verify_briefing
@@ -64,7 +64,9 @@ def build_commodity_info(commodity: dict) -> str:
 
 
 def analyze(market_data: dict) -> str:
-    today         = datetime.now().strftime("%Y년 %m월 %d일 (%a)")
+    # ★ 서버 UTC — 브리핑은 21:50 UTC(=KST 익일 06:50) 실행이라
+    #   datetime.now()를 쓰면 본문 날짜가 하루 전으로 표시된다 (2026-08-11 실측 버그)
+    today         = datetime.now(timezone(timedelta(hours=9))).strftime("%Y년 %m월 %d일 (%a)")
     news          = "\n".join([f"- {n}" for n in market_data["news"]])
     stock_info    = build_stock_info(market_data.get("top_candidates", market_data.get("stocks", {})))
     calendar_str  = get_this_week_events()
