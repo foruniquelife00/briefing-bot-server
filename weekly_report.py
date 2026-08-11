@@ -186,6 +186,12 @@ def send_weekly_report():
         gate  = _guard_or_block(msg, f"weekly_{today}")
         if gate is None:
             return {"status": "blocked_role_boundary"}
+        # C+ §7 운영지표 — 주 1회 함께 발송 (verify 스크립트에서만 보이던 상태 해소)
+        try:
+            import delivery_status as _DS
+            gate = gate + "\n\n" + "─" * 22 + "\n" + _DS.metrics_report(7)
+        except Exception as _me:
+            print(f"발송지표 첨부 실패(무영향): {_me}")
         result = send_all(gate, subject=f"📰 주간 뉴스레터 {today}")
         print(f"텔레그램: {'✅' if result['telegram'] else '❌'}")
         print(f"이메일:   {'✅' if result['email'] else '❌'}")
