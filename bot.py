@@ -245,8 +245,10 @@ def run_briefing():
         tg_ok   = send_telegram(msg)
         subject = f"📊 투자 브리핑 | {dt.now().strftime('%Y-%m-%d (%a)')}"
         em_ok   = send_email(subject, msg)
-        logging.info(f"브리핑 텔레그램={'성공' if tg_ok else '실패'} / 이메일={'성공' if em_ok else '실패'}")
-        print(f"[브리핑] 텔레그램={'성공' if tg_ok else '실패'} / 이메일={'성공' if em_ok else '실패'}", flush=True)
+        # 이메일은 None=비활성 / False=실패 / True=성공 (2026-08-13 중단 결정)
+        em_txt = "성공" if em_ok else ("비활성" if em_ok is None else "실패")
+        logging.info(f"브리핑 텔레그램={'성공' if tg_ok else '실패'} / 이메일={em_txt}")
+        print(f"[브리핑] 텔레그램={'성공' if tg_ok else '실패'} / 이메일={em_txt}", flush=True)
 
         if tg_ok:
             final = DS.SENT_REDACTED if cp["action"] == "redact" else DS.SENT_FULL

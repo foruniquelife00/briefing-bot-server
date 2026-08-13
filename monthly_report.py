@@ -240,7 +240,7 @@ def send_monthly_report():
         msg = ensure_disclaimer(msg)                      # 면책 문구 (§8)
         result = send_all(msg, subject=f"📅 {today} 월간 리포트")
         print(f"텔레그램: {'✅' if result['telegram'] else '❌'}")
-        print(f"이메일:   {'✅' if result['email'] else '❌'}")
+        print(f"이메일:   {result.get('email_status', '?')}")
         return {"status": "sent", **result}
     except Exception as e:
         print(f"월간 리포트 오류: {e}")

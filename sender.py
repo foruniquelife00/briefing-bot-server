@@ -36,7 +36,21 @@ def send_telegram(message: str) -> bool:
     return True
 
 
-def send_email(subject: str, message: str) -> bool:
+# ── 이메일 발송 잠정 중단 (2026-08-13 사용자 결정) ────────────
+#   사유: Gmail 앱 비밀번호 만료로 매 발송마다 SMTP 534 오류가 누적됨.
+#         텔레그램이 주 채널이므로 이메일은 잠정 중단한다.
+#   재개: config.py에 EMAIL_ENABLED = True 를 두거나 아래 기본값을 True로.
+#   ★ '비활성'과 '실패'를 구분한다 — 의도된 중단을 실패로 기록하면
+#     조용한 실패(B유형) 감시가 오염된다. 비활성은 None을 반환한다.
+def _email_enabled() -> bool:
+    return bool(getattr(config, "EMAIL_ENABLED", False))
+
+
+def send_email(subject: str, message: str):
+    """반환: True=성공 / False=실패 / None=비활성(의도된 중단)"""
+    if not _email_enabled():
+        logging.info("[이메일] 비활성 상태 — 발송 생략 (config.EMAIL_ENABLED=False)")
+        return None
     try:
         msg = MIMEMultipart("alternative")
         msg["Subject"] = subject
@@ -72,9 +86,12 @@ def send_all(message: str, subject: str | None = None) -> dict:
     if subject is None:
         subject = f"Investment briefing {datetime.now(timezone(timedelta(hours=9))).strftime('%Y.%m.%d')}"
 
+    tg = send_telegram(message)
+    em = send_email(subject, message)      # None이면 비활성 (실패 아님)
     return {
-        "telegram": send_telegram(message),
-        "email": send_email(subject, message),
+        "telegram": tg,
+        "email": em,
+        "email_status": ("sent" if em else "disabled" if em is None else "failed"),
     }
 
 

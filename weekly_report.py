@@ -194,7 +194,7 @@ def send_weekly_report():
             print(f"발송지표 첨부 실패(무영향): {_me}")
         result = send_all(gate, subject=f"📰 주간 뉴스레터 {today}")
         print(f"텔레그램: {'✅' if result['telegram'] else '❌'}")
-        print(f"이메일:   {'✅' if result['email'] else '❌'}")
+        print(f"이메일:   {result.get('email_status', '?')}")
         return {"status": "sent", **result}
     except Exception as e:
         print(f"주간 뉴스레터 오류: {e}")
@@ -360,7 +360,7 @@ def send_friday_report():
             return {"status": "blocked_role_boundary"}
         result = send_all(gate, subject=f"📊 주간 결산 & 다음 주 전망 {today}")
         print(f"텔레그램: {'✅' if result['telegram'] else '❌'}")
-        print(f"이메일:   {'✅' if result['email'] else '❌'}")
+        print(f"이메일:   {result.get('email_status', '?')}")
         return {"status": "sent", **result}
     except Exception as e:
         print(f"금요일 리포트 오류: {e}")
