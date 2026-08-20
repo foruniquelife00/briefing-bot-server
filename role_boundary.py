@@ -74,6 +74,23 @@ EXPLANATORY = [
     "설명", "의미합니다", "뜻합니다", "배경", "원인", "때문",
 ]
 
+# ── 4a-2. 수급 주체 + 매수/매도 = 사실 기술 (2026-08-14 오탐) ──
+#   "외국인 매수 확대", "기관 매도 우위" 등은 수급 관측이지 지시가 아니다.
+#   ('확대'가 DIRECTIVE에 있어 "매수 확대"가 지시로 오인됐다)
+#   ★ 단 뒤에 지시형 종결이 붙으면 여전히 차단된다 ("외국인 매수를 따라 사세요")
+SUPPLY_FACT = re.compile(
+    r"(외국인|기관|개인|연기금|투신|사모|기타법인)\s*\S{0,6}\s*"
+    r"(매수|매도)\s*(확대|축소|우위|유입|유출|전환|지속|증가|감소|규모|강도)")
+
+
+def _is_supply_fact(sentence: str) -> bool:
+    """수급 주체 + 매수/매도 + 방향 = 관측 사실 (지시 아님)"""
+    if not SUPPLY_FACT.search(sentence):
+        return False
+    # 지시형 종결이 있으면 사실이 아니라 지시
+    return not re.search(r"(권장|권고|하세요|하시기|바랍니다|해야|하라|따라\s*사)", sentence)
+
+
 # ── 4b. 부정·금지·동결 맥락 (필수 예외) ──────────────────────
 #    2026-08-02 실제 생성물에서 발견: 면책 문구와 동결 항목 설명이 차단됐다.
 #    "종목 추천, 매매 지시, 비중 조정을 포함하지 않습니다" ← 이것 자체가 걸림.
@@ -138,7 +155,7 @@ def check_role_boundary(text: str) -> dict:
         if len(s) < 6:
             continue
         # 사실 기술 / 금지·동결 선언 / 데이터 라벨은 위반이 아니다
-        if _is_explanatory(s) or _is_negated(s):
+        if _is_explanatory(s) or _is_negated(s) or _is_supply_fact(s):
             continue
         for pat, label in BANNED_PATTERNS:
             if re.search(pat, s):
@@ -224,7 +241,7 @@ def _line_violations(text: str):
         s = line.strip()
         if len(s) < 6:
             continue
-        if _is_explanatory(s) or _is_negated(s):
+        if _is_explanatory(s) or _is_negated(s) or _is_supply_fact(s):
             continue
 
         # 섹션 제목 위반 (구조 위반 — 제거로 해결 안 됨)
