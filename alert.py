@@ -11,7 +11,16 @@ from watchlist import load_watchlist, STOCK_MAP
 BASE_DIR = Path(__file__).resolve().parent
 ALERT_LOG_FILE      = str(BASE_DIR / "alert_log.json")
 ALERT_SETTINGS_FILE = str(BASE_DIR / "alert_settings.json")
-DEFAULT_THRESHOLD   = 3.0  # 기본 임계값 3%
+# ★ 2026-09-04 — "확신 있는 것만" 기준으로 상향 (사용자 결정: "정보가 난무함")
+#   ±3%는 코스피 개별종목에서 흔해 34종목 감시 시 하루 10~30건이 발생한다.
+#   임계값을 올려 '확실히 특이한 움직임'만 남긴다. 종목별 개별 설정
+#   (alert_settings.json)은 그대로 우선 적용되므로 필요한 종목만 낮출 수 있다.
+DEFAULT_THRESHOLD   = 5.0  # 기본 임계값 5% (이전 3%)
+
+# 한 번의 스캔에서 개별 발송할 최대 건수. 초과하면 요약 1건으로 묶는다.
+# 변동성이 큰 날(예: 2026-07-28 KOSPI -10.84%)에는 감시 종목 대부분이 임계값을
+# 넘길 수 있고, 그때 개별 발송하면 메시지 폭탄이 된다.
+MAX_INDIVIDUAL_ALERTS = 5
 
 def load_alert_log() -> dict:
     if os.path.exists(ALERT_LOG_FILE):
@@ -163,9 +172,11 @@ def check_alerts():
                 f"  현재가: {fmt(price)}\n"
                 f"  등락:   {rate:+.2f}% (임계값 ±{threshold}%){extra}\n"
                 f"  기준가: {fmt(prev)}\n"
-                f"━━━━━━━━━━━━━━━━━━━━━"
+                f"━━━━━━━━━━━━━━━━━━━━━\n"
+                f"※ 가격 변동 사실 통보입니다. 매매 판단이 아닙니다."
             )
-            alerts.append((name, msg))
+            # 세 번째 항목은 요약용 한 줄 (건수 초과 시 묶음 발송에 사용)
+            alerts.append((name, msg, f"{arrow} {name} {rate:+.2f}%  {fmt(price)}"))
 
         except Exception as e:
             print(f"{name} 오류: {e}")
@@ -174,7 +185,21 @@ def check_alerts():
         print(f"급등락 없음 ({len(watchlist)}개 스캔)")
         return {"attempted": 0, "sent": 0, "failed": 0, "errors": []}
 
-    return dispatch_alerts(alerts, today)
+    # ── 정보 난무 방지: 건수가 많으면 개별 발송 대신 요약 1건 (2026-09-04) ──
+    if len(alerts) > MAX_INDIVIDUAL_ALERTS:
+        names = [a[0] for a in alerts]
+        summary = (
+            f"🚨 급등락 {len(alerts)}건 (임계 ±{DEFAULT_THRESHOLD}% 기준)\n"
+            f"━━━━━━━━━━━━━━━━━━━━━\n"
+            + "\n".join(a[2] for a in alerts) + "\n"
+            f"━━━━━━━━━━━━━━━━━━━━━\n"
+            f"※ 변동 폭이 큰 장입니다. 가격 사실 통보이며 매매 판단이 아닙니다.\n"
+            f"   종목 판단은 07:00 시그널봇의 관심목록을 확인하세요."
+        )
+        print(f"급등락 {len(alerts)}건 → 요약 1건으로 묶어 발송")
+        return dispatch_alerts([(names, summary)], today)
+
+    return dispatch_alerts([(a[0], a[1]) for a in alerts], today)
 
 
 def dispatch_alerts(alerts: list, today: str, sender=None) -> dict:
@@ -186,6 +211,8 @@ def dispatch_alerts(alerts: list, today: str, sender=None) -> dict:
       반드시 '발송 성공 확인 → 기록' 순서를 지킨다.
 
     alerts: [(종목명, 메시지), ...]
+            종목명 자리에 리스트를 넣으면 그 종목들을 한 메시지로 묶어 발송하고,
+            성공 시 리스트의 모든 종목을 기록한다(요약 발송용).
     sender: 발송 함수(msg)->bool. 기본값은 sender.send_telegram.
             테스트에서 주입할 수 있도록 인자로 분리했다.
     반환: {"attempted","sent","failed","errors"}
@@ -198,15 +225,18 @@ def dispatch_alerts(alerts: list, today: str, sender=None) -> dict:
     sent = failed = 0
     errors = []
     for name, msg in alerts:
+        names = [name] if isinstance(name, str) else list(name)
+        label = name if isinstance(name, str) else f"{len(names)}건 묶음"
         if sender(msg):
-            mark_alerted(name, today)          # ★ 성공했을 때만 '보냄' 기록
+            for n in names:
+                mark_alerted(n, today)         # ★ 성공했을 때만 '보냄' 기록
             sent += 1
-            print(f"알림 발송 성공: {name}")
+            print(f"알림 발송 성공: {label}")
         else:
             failed += 1
-            errors.append(name)
+            errors.extend(names)
             # 기록하지 않으므로 다음 30분 주기에 자동 재시도된다
-            print(f"[ERROR] 알림 발송 실패: {name} — 미기록(다음 주기 재시도)")
+            print(f"[ERROR] 알림 발송 실패: {label} — 미기록(다음 주기 재시도)")
 
     result = {"attempted": len(alerts), "sent": sent,
               "failed": failed, "errors": errors}

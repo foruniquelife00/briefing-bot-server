@@ -123,6 +123,46 @@ check("에러 메시지에 실패 종목명 포함",
       raised is not None and "SK하이닉스" in raised, raised or "")
 
 # ── 4. mark_alerted가 발송하지 않는가 (책임 분리) ──
+# ── 3-b. 묶음(요약) 발송 — 정보 난무 방지 경로 ──
+print("\n[3-b] 요약 묶음 발송 시 관련 종목이 모두 기록되는가")
+
+BUNDLE = [(["삼성전자", "SK하이닉스", "네이버"], "요약 메시지 3건")]
+
+
+def case_bundle_ok():
+    res = alert.dispatch_alerts(BUNDLE, TODAY, sender=lambda m: True)
+    return res, alert.load_alert_log()
+
+
+res, log = with_temp_log(case_bundle_ok)
+check("묶음 1건 발송으로 3종목 모두 기록",
+      all(log.get(n) == TODAY for n in ["삼성전자", "SK하이닉스", "네이버"]), str(log))
+check("집계는 발송 건수 기준 sent=1", res["sent"] == 1, str(res))
+
+
+def case_bundle_fail():
+    try:
+        alert.dispatch_alerts(BUNDLE, TODAY, sender=lambda m: False)
+        raised = None
+    except RuntimeError as e:
+        raised = str(e)
+    return raised, alert.load_alert_log()
+
+
+raised, log = with_temp_log(case_bundle_fail)
+check("★ 묶음 발송 실패 시 3종목 모두 미기록", log == {}, f"기록됨: {log}")
+check("실패 목록에 3종목 모두 포함",
+      raised is not None and all(n in raised for n in ["삼성전자", "네이버"]),
+      raised or "예외 없음")
+
+# ── 3-c. 임계값·상한 상수 확인 ──
+print("\n[3-c] '확신 있는 것만' 기준이 반영됐는가")
+check("기본 임계값이 5.0으로 상향됨", alert.DEFAULT_THRESHOLD == 5.0,
+      f"현재 {alert.DEFAULT_THRESHOLD}")
+check("개별 발송 상한이 설정됨",
+      getattr(alert, "MAX_INDIVIDUAL_ALERTS", 0) > 0,
+      f"MAX_INDIVIDUAL_ALERTS={getattr(alert, 'MAX_INDIVIDUAL_ALERTS', None)}")
+
 print("\n[4] mark_alerted가 기록만 하는가 (발송 책임 제거 확인)")
 import ast
 import inspect
