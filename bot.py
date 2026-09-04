@@ -56,17 +56,31 @@ def get_updates(offset=None):
 _BOT_HEADER = "📰 [브리핑봇]\n"   # briefing-bot-server 식별 헤더
 
 
-def send_message(chat_id: int, text: str):
-    try:
-        tagged = _BOT_HEADER + text
-        chunks = [tagged[i:i+4000] for i in range(0, len(tagged), 4000)]
-        for chunk in chunks:
-            requests.post(f"{BASE_URL}/sendMessage", json={
+def send_message(chat_id: int, text: str) -> bool:
+    """
+    사용자 명령 응답 발송. 성공 True / 실패 False.
+
+    ★ 2026-09-04 수정 — HTTP 상태코드를 확인하지 않아 텔레그램이 400/403/429를
+      반환해도 성공처럼 조용히 넘어갔다. sender.send_telegram과 같은 수준으로 맞춘다.
+      (sender를 그대로 쓰지 못하는 이유: 여기는 응답할 chat_id가 사용자마다 다르고,
+       sender는 config.TELEGRAM_CHAT_ID 고정이다)
+    """
+    tagged = _BOT_HEADER + text
+    chunks = [tagged[i:i+4000] for i in range(0, len(tagged), 4000)]
+    for chunk in chunks:
+        try:
+            res = requests.post(f"{BASE_URL}/sendMessage", json={
                 "chat_id": chat_id,
                 "text":    chunk,
             }, timeout=30)
-    except Exception as e:
-        logging.error(f"sendMessage 오류: {e}")
+            if res.status_code != 200:
+                logging.error(f"sendMessage 실패 chat_id={chat_id} "
+                              f"status={res.status_code} body={res.text[:200]}")
+                return False
+        except Exception as e:
+            logging.error(f"sendMessage 오류 chat_id={chat_id}: {e}")
+            return False
+    return True
 
 
 def handle_message(chat_id: int, text: str):

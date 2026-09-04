@@ -1,11 +1,12 @@
 import yfinance as yf
-import requests
 import json
 import os
 from pathlib import Path
 from datetime import datetime, timezone, timedelta
-import config
 from watchlist import load_watchlist, STOCK_MAP
+# ★ requests / config 직접 import 제거 (2026-09-04)
+#   자체 requests.post로 텔레그램을 발송하던 코드가 버그의 원인이었다.
+#   발송은 sender.send_telegram(검증된 경로)에 위임한다 — check_alerts()에서 지연 import.
 
 BASE_DIR = Path(__file__).resolve().parent
 ALERT_LOG_FILE      = str(BASE_DIR / "alert_log.json")
@@ -96,18 +97,21 @@ def already_alerted(name: str, today: str) -> bool:
     return log.get(name) == today
 
 def mark_alerted(name: str, today: str):
+    """
+    '오늘 이 종목 알림을 이미 보냈다'고 기록만 한다. 발송은 하지 않는다.
+
+    ★ 2026-09-04 수정 — 이 함수가 기록과 발송을 겸하면서 3중 실패가 있었다:
+        1) 미정의 변수 `message`를 참조해 NameError → 알림이 실제로 발송되지 않음
+        2) 그런데 save_alert_log()가 먼저 실행되어 '오늘 보냄'으로 기록 → 재시도 차단
+        3) 호출측은 그대로 "알림 발송" 로그를 출력 → 성공처럼 보임
+      except가 NameError를 삼켜 몇 달간 조용히 미발송 상태였다.
+      → 발송 책임을 sender.send_telegram(검증된 경로: HTTP status 확인·bool 반환)으로
+        옮기고, 이 함수는 기록만 한다. 기록은 '발송 성공 후'에만 호출한다.
+      (CLAUDE.md 보고 원칙: "완료 로그 ≠ 성공", "실패는 조용히 넘기지 않는다")
+    """
     log = load_alert_log()
     log[name] = today
     save_alert_log(log)
-
-    url = f"https://api.telegram.org/bot{config.TELEGRAM_TOKEN}/sendMessage"
-    try:
-        requests.post(url, json={
-            "chat_id": config.TELEGRAM_CHAT_ID,
-            "text":    "📰 [브리핑봇]\n" + message,   # 발송 주체 식별 헤더
-        }, timeout=10)
-    except Exception as e:
-        print(f"텔레그램 오류: {e}")
 
 def check_alerts():
     """워치리스트 전체 스캔 후 급등락 알림"""
@@ -166,12 +170,51 @@ def check_alerts():
         except Exception as e:
             print(f"{name} 오류: {e}")
 
-    for name, msg in alerts:
-        mark_alerted(name, today)
-        print(f"알림 발송: {name}")
-
     if not alerts:
         print(f"급등락 없음 ({len(watchlist)}개 스캔)")
+        return {"attempted": 0, "sent": 0, "failed": 0, "errors": []}
+
+    return dispatch_alerts(alerts, today)
+
+
+def dispatch_alerts(alerts: list, today: str, sender=None) -> dict:
+    """
+    급등락 알림 발송 → **성공한 것만** 기록.
+
+    ★ 2026-09-04 신설 — 순서가 이 함수의 존재 이유다.
+      기록을 먼저 하면 발송 실패 시 그날 재시도가 영구히 막힌다(직전 버그의 핵심).
+      반드시 '발송 성공 확인 → 기록' 순서를 지킨다.
+
+    alerts: [(종목명, 메시지), ...]
+    sender: 발송 함수(msg)->bool. 기본값은 sender.send_telegram.
+            테스트에서 주입할 수 있도록 인자로 분리했다.
+    반환: {"attempted","sent","failed","errors"}
+    실패가 1건이라도 있으면 RuntimeError — 조용히 넘기지 않는다.
+    """
+    if sender is None:
+        from sender import send_telegram   # 헤더·4096자 분할·상태확인 포함
+        sender = send_telegram
+
+    sent = failed = 0
+    errors = []
+    for name, msg in alerts:
+        if sender(msg):
+            mark_alerted(name, today)          # ★ 성공했을 때만 '보냄' 기록
+            sent += 1
+            print(f"알림 발송 성공: {name}")
+        else:
+            failed += 1
+            errors.append(name)
+            # 기록하지 않으므로 다음 30분 주기에 자동 재시도된다
+            print(f"[ERROR] 알림 발송 실패: {name} — 미기록(다음 주기 재시도)")
+
+    result = {"attempted": len(alerts), "sent": sent,
+              "failed": failed, "errors": errors}
+    if failed:
+        # 조용히 넘기지 않는다 — 호출측(bot.run_alert)이 logging.error로 남긴다
+        raise RuntimeError(
+            f"급등락 알림 발송 실패 {failed}/{len(alerts)}건: {', '.join(errors)}")
+    return result
 
 if __name__ == "__main__":
     print(get_alert_settings_text())
