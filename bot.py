@@ -370,7 +370,24 @@ def run_event_detection_if_daytime():
         run_event_detection()
 
 def run_git_backup():
-    """매일 GitHub 자동 백업"""
+    """
+    매일 01:00 UTC GitHub 자동 백업.
+
+    ★ 2026-09-05 수정 — 아래 두 문제로 매일 exit 128 실패가 반복되고 있었다.
+      ① 유일하게 추적되던 런타임 파일 nohup.out(2026-06-12 잔재)이 매번
+         커밋거리를 만들어 push를 시도하게 했다 → .gitignore 등록 + 추적 해제.
+      ② commit 실패 시에도 push로 넘어가는 논리 결함:
+         이전 코드는 stdout에 "nothing to commit"이 없으면 무조건 push했는데,
+         commit이 다른 이유로 실패한 경우(예: user.email 미설정)에도
+         그 문자열이 없으므로 push를 시도한다 → returncode로 판정하도록 교체.
+
+    ⚠ 구조적 주의: 서버가 원격에 push하는 것은 '로컬→GitHub→서버(pull)' 단방향
+      배포 모델을 양방향으로 만든다. 서버 커밋이 쌓이면 다음 배포의 git pull이
+      충돌한다. 현재는 추적 대상 런타임 파일이 없어 실질적으로 no-op이며,
+      존치/제거는 사용자 판단 대기 중이다(2026-09-05).
+      또한 systemd 서비스 환경에는 push 자격증명이 없어(대화형 셸과 다름)
+      실제 push가 필요해지면 다시 실패한다.
+    """
     try:
         import subprocess
         from datetime import datetime, timezone, timedelta
@@ -381,11 +398,17 @@ def run_git_backup():
             ["git", "-C", str(BASE_DIR), "commit", "-m", f"🤖 자동 백업: {date}"],
             capture_output=True, text=True
         )
-        if "nothing to commit" not in result.stdout:
+        if result.returncode == 0:
             subprocess.run(["git", "-C", str(BASE_DIR), "push"], check=True)
             logging.info("GitHub 백업 완료")
+        elif "nothing to commit" in (result.stdout + result.stderr):
+            logging.info("GitHub 백업: 변경사항 없음 (정상)")
         else:
-            logging.info("GitHub 백업: 변경사항 없음")
+            # 커밋 자체가 실패 — push하지 않는다(실패 위에 실패를 얹지 않음)
+            logging.error(
+                f"GitHub 백업: commit 실패(rc={result.returncode}) — push 생략. "
+                f"stdout={result.stdout.strip()[:200]} "
+                f"stderr={result.stderr.strip()[:200]}")
     except Exception as e:
         logging.error(f"GitHub 백업 오류: {e}")
 
@@ -402,8 +425,20 @@ def run_scheduler():
     schedule.every(60).minutes.do(run_event_detection_if_daytime)
     schedule.every().day.at("01:00").do(run_git_backup)
 
-    logging.info("스케줄러 시작 — KST 07:30 브리핑 / 30분마다 알림")
-    print("스케줄러 시작 — KST 07:30 브리핑 / 30분마다 알림")
+    # ★ 2026-09-04 문구 정정 — 이전 로그는 "KST 07:30 브리핑"이라고 찍었으나
+    #   ① 이 상시 서비스는 일간 브리핑을 담당하지 않는다(systemd timer가 담당)
+    #   ② 브리핑 시각도 07:30이 아니라 06:50이다
+    #   장애 확인 시 "브리핑이 이 서비스에서 돈다"고 오독하게 만든다.
+    #   schedule 라이브러리는 서버 UTC 기준이므로 아래 시각은 UTC(KST 환산 병기).
+    _sched = ("스케줄러 시작 [상시 서비스] — "
+              "주간뉴스레터 월21:50UTC(화06:50KST) / "
+              "금결산 금14:00UTC(금23:00KST) / "
+              "월간 매일21:50UTC(1일만) / "
+              "급등락 30분마다 / GitHub백업 01:00UTC")
+    logging.info(_sched)
+    logging.info("※ 일간 브리핑(평일 06:50 KST)·복기(17:50)는 systemd timer 담당 "
+                 "— 이 서비스가 아님. 배포 시 timer는 git pull만으로 반영됨.")
+    print(_sched)
 
     while True:
         schedule.run_pending()

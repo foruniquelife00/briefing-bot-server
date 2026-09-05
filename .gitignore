@@ -8,3 +8,11 @@ alert_settings.json
 __pycache__/
 *.pyc
 .env
+
+# ★ 2026-09-05 추가 — nohup.out이 유일하게 추적되던 런타임 파일이었고,
+#   이것 때문에 매일 01:00 run_git_backup이 커밋·push를 시도하다
+#   systemd 환경의 자격증명 부재로 exit 128 실패를 반복했다(로그에만 ERROR).
+#   내용은 2026-06-12가 마지막인 Streamlit 대시보드 경고 로그이며,
+#   그 대시보드는 2026-08-11 보안 문제로 중지됐다(OPERATIONS.md §2).
+#   CLAUDE.md의 "nohup 금지 — systemd 전환 후 좀비 재발 방지" 원칙과도 어긋난다.
+nohup.out
