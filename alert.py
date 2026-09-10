@@ -151,6 +151,19 @@ def check_alerts():
             rate   = (price - prev) / prev * 100
             is_kr  = ticker.endswith(".KS") or ticker.endswith(".KQ")
 
+            # ★ 2026-09-10 사고 방어 — 국내주식 가격제한폭은 ±30% 다.
+            #   그보다 큰 값은 시장 움직임이 아니라 **데이터 오류**다.
+            #   에코프로비엠(코스닥)이 247540.KS 로 매핑돼 yfinance 가
+            #   전혀 다른 종목 가격(194,000 / 실제 118,700)을 돌려줬고,
+            #   +68.84% 가 임계 ±5% 를 매일 넘어 알림이 반복 발송됐다.
+            #   티커 매핑은 고쳤지만, 같은 종류의 오류가 다시 나도
+            #   **쓰레기 값이 사용자에게 도달하지 않도록** 여기서 막는다.
+            if is_kr and abs(rate) > 30.0:
+                print(f"  [급등락] {name}({ticker}) 등락 {rate:+.1f}% — "
+                      f"가격제한폭(±30%) 초과. 데이터 오류로 판단해 발송 생략 "
+                      f"(현재가 {price} / 기준가 {prev})")
+                continue
+
             if abs(rate) < threshold:
                 continue
 
