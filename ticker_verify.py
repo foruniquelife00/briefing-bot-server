@@ -82,22 +82,26 @@ def verify_ticker(ticker: str, yf_prev: float = None, yf_last: float = None) -> 
     out["checked"] = True
     out["fdr_closes"] = [round(c, 1) for c in closes]
 
-    # yfinance 값 중 하나라도 FDR 최근 종가와 일치하면 같은 종목으로 본다
-    cands = [v for v in (yf_prev, yf_last) if v]
-    if not cands:
-        out["reason"] = "yfinance 값 없음 — 판단 보류"
+    # ★ 판정 기준은 **prev(전일종가) 하나뿐**이다. last 는 쓰지 않는다.
+    #   첫 구현은 prev·last 중 하나만 맞아도 통과시켰는데,
+    #   실제 사고(247540.KS)가 prev=114,900(정상)·last=194,000(오류) 조합이라
+    #   그대로 통과했다 — 가드가 사고를 못 잡았다.
+    #   prev 는 확정된 일별 값이라 같은 종목이면 반드시 일치한다.
+    #   last 는 장중 값이라 종가와 달라도 정상이며, last 의 이상은
+    #   alert.py 의 ±30% 가격제한폭 가드가 담당한다. 역할을 섞지 않는다.
+    if not yf_prev:
+        out["reason"] = "yfinance 전일종가 없음 — 판단 보류"
         out["checked"] = False
         return out
-    for v in cands:
-        for c in closes:
-            if c > 0 and abs(v - c) / c <= TOLERANCE:
-                out["reason"] = f"FDR 종가 {c:,.0f} 와 일치"
-                return out
+    for c in closes:
+        if c > 0 and abs(yf_prev - c) / c <= TOLERANCE:
+            out["reason"] = f"전일종가 {yf_prev:,.0f} = FDR {c:,.0f} 일치"
+            return out
 
     out["ok"] = False
-    out["reason"] = (f"yfinance {cands} 가 FDR 최근종가 "
+    out["reason"] = (f"yfinance 전일종가 {yf_prev:,.0f} 가 FDR 최근종가 "
                      f"{[f'{c:,.0f}' for c in closes]} 어느 것과도 불일치 "
-                     f"— 티커가 다른 종목을 가리킬 가능성")
+                     f"— 티커가 다른 종목을 가리킨다")
     return out
 
 
