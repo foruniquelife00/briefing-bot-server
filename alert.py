@@ -133,11 +133,25 @@ def check_alerts():
     settings  = load_alert_settings()
     alerts    = []
 
+    # ★ 티커가 '그 종목'을 가리키는지 독립 소스(FDR)로 하루 1회 확인 (2026-09-10).
+    #   아래 ±30% 가드만으로는 부족하다 — yfinance 가 last·prev 를 둘 다
+    #   다른 종목 값으로 주면 등락률이 정상 범위로 나와 가드를 통과한다.
+    #   FDR 이 죽어도 알림을 막지 않는다(판단 보류). 검증 실패는 알림보다 덜 중요하다.
+    try:
+        from ticker_verify import unreliable_today
+        unreliable = unreliable_today()
+    except Exception as e:
+        print(f"  [티커검증] 생략(알림은 계속): {e}")
+        unreliable = set()
+
     for name in watchlist:
         ticker = STOCK_MAP.get(name)
         if not ticker:
             continue
         if already_alerted(name, today):
+            continue
+        if ticker in unreliable:
+            print(f"  [급등락] {name}({ticker}) 티커 검증 실패 — 발송 생략")
             continue
 
         # 종목별 임계값 (개인 설정 or 기본값)
