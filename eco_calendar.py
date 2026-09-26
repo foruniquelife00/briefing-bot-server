@@ -1,83 +1,86 @@
+import os
+from concurrent.futures import ThreadPoolExecutor
 import requests
 from datetime import datetime, timedelta, timezone
 import config
 
-FRED_KEY = "58e3ab37a6fe04de7cf3ab8600d46255"
 
 # 주요 경제 지표 FRED Release ID
 IMPORTANT_RELEASES = {
-    101:  ("📌", "🇺🇸 FOMC 성명/금리 결정"),
-    53:   ("📌", "🇺🇸 GDP 발표"),
-    10:   ("📌", "🇺🇸 CPI 소비자물가지수"),
-    21:   ("📌", "🇺🇸 비농업 고용지수"),
-    50:   ("⚠️", "🇺🇸 PCE 물가지수"),
-    11:   ("⚠️", "🇺🇸 PPI 생산자물가지수"),
-    14:   ("⚠️", "🇺🇸 소매판매"),
-    46:   ("⚠️", "🇺🇸 신규 실업수당 청구"),
-    20:   ("⚠️", "🇺🇸 주택착공"),
-    19:   ("⚠️", "🇺🇸 기존주택판매"),
-    18:   ("⚠️", "🇺🇸 내구재 주문"),
-    15:   ("⚠️", "🇺🇸 산업생산"),
-    22:   ("⚠️", "🇺🇸 미시간 소비자신뢰"),
-    113:  ("⚠️", "🇺🇸 JOLTS 구인건수"),
-    103:  ("⚠️", "🇺🇸 ADP 고용보고서"),
-    24:   ("⚠️", "🇺🇸 무역수지"),
+    101: ("📌", "🇺🇸 FOMC 보도자료"),
+    53:  ("📌", "🇺🇸 GDP 발표"),
+    10:  ("📌", "🇺🇸 소비자물가지수(CPI)"),
+    50:  ("📌", "🇺🇸 고용보고서"),
+    46:  ("⚠️", "🇺🇸 생산자물가지수(PPI)"),
 }
 
-def get_fred_calendar(days: int = 7) -> list:
-    """FRED API로 이번 주 주요 경제 지표 발표일 수집"""
-    today  = datetime.now(timezone.utc).date()
+def get_fred_calendar(days: int = 7) -> list | None:
+    """Get a verified subset of this week's U.S. release dates from FRED."""
+    today = datetime.now(timezone.utc).date()
     monday = today - timedelta(days=today.weekday())
     friday = monday + timedelta(days=4)
+    fred_key = os.environ.get("FRED_API_KEY", "").strip()
+    if not fred_key:
+        print("FRED 캘린더 오류: FRED_API_KEY 환경변수 미설정")
+        return None
+
+    def fetch_release(release_id: int) -> list:
+        response = requests.get(
+            "https://api.stlouisfed.org/fred/release/dates",
+            params={
+                "api_key": fred_key,
+                "file_type": "json",
+                "release_id": release_id,
+                "sort_order": "desc",
+                "limit": 100,
+                "include_release_dates_with_no_data": "true",
+            },
+            timeout=10,
+        )
+        response.raise_for_status()
+        data = response.json()
+        if not isinstance(data, dict) or not isinstance(data.get("release_dates"), list):
+            raise ValueError("Unexpected FRED release response")
+        return data["release_dates"]
 
     try:
-        res = requests.get(
-            "https://api.stlouisfed.org/fred/releases/dates",
-            params={
-                "api_key":        FRED_KEY,
-                "file_type":      "json",
-                "realtime_start": monday.strftime("%Y-%m-%d"),
-                "realtime_end":   friday.strftime("%Y-%m-%d"),
-                "limit":          200,
-                "sort_order":     "asc",
-            },
-            timeout=10
-        )
-        data = res.json()
+        with ThreadPoolExecutor(max_workers=len(IMPORTANT_RELEASES)) as pool:
+            release_dates = list(pool.map(fetch_release, IMPORTANT_RELEASES))
+
         events = []
-        for item in data.get("release_dates", []):
-            rid  = item.get("release_id")
-            date = item.get("date", "")
-            if rid in IMPORTANT_RELEASES:
-                imp_icon, name = IMPORTANT_RELEASES[rid]
-                try:
-                    dt = datetime.strptime(date, "%Y-%m-%d")
-                    date_fmt = dt.strftime("%m/%d (%a)")
-                    is_today = dt.date() == today
-                except:
-                    date_fmt = date
-                    is_today = False
-
+        seen = set()
+        for release_id, items in zip(IMPORTANT_RELEASES, release_dates):
+            importance, name = IMPORTANT_RELEASES[release_id]
+            for item in items:
+                date_text = item.get("date", "")
+                if not (monday.isoformat() <= date_text <= friday.isoformat()):
+                    continue
+                published_date = datetime.strptime(date_text, "%Y-%m-%d").date()
+                event_key = (release_id, date_text)
+                if event_key in seen:
+                    continue
+                seen.add(event_key)
                 events.append({
-                    "date":       date_fmt,
-                    "raw_date":   date,
-                    "event":      name,
-                    "importance": imp_icon,
-                    "is_today":   is_today,
+                    "date": published_date.strftime("%m/%d (%a)"),
+                    "raw_date": date_text,
+                    "event": name,
+                    "importance": importance,
+                    "is_today": published_date == today,
                 })
-
-        events.sort(key=lambda x: x["raw_date"])
+        events.sort(key=lambda event: (event["raw_date"], event["event"]))
         return events
-
-    except Exception as e:
-        print(f"FRED 캘린더 오류: {e}")
-        return []
+    except Exception as exc:
+        # Exception text may include an API URL containing the key.
+        print(f"FRED 캘린더 오류: {type(exc).__name__}")
+        return None
 
 
 def get_this_week_events() -> str:
     """이번 주 경제 캘린더 텍스트 생성"""
     events = get_fred_calendar()
 
+    if events is None:
+        return "이번 주 경제 일정 정보를 확인하지 못했습니다"
     if not events:
         return "이번 주 주요 일정 없음"
 
