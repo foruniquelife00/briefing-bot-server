@@ -190,6 +190,10 @@ def handle_message(chat_id: int, text: str):
 
 def run_briefing():
     # KST 기준 요일 판단 (UTC 기준이면 KST 월요일=UTC 일요일로 오판 → 월요일 누락)
+    from market_calendar import is_session
+    if not is_session():
+        from nontrading_brief import run_nontrading_brief
+        return run_nontrading_brief()
     weekday = datetime.now(timezone(timedelta(hours=9))).weekday()
     if weekday >= 5:
         logging.info("주말 — 브리핑 건너뜀")
@@ -231,7 +235,7 @@ def run_briefing():
             try:
                 types = ", ".join(sorted({v["type"] for v in cp["violations"]}))
                 notified = int(bool(send_telegram(
-                    "⛔ <b>브리핑 발송 차단</b> (역할 경계 C+)\n"
+                    "⛔ 브리핑 발송 차단 (역할 경계 C+)\n"
                     f"사유: {cp['reason']}\n유형: {types}\n"
                     "매매 지시성 문구가 제거로 해결되지 않아 전체 차단됐습니다.\n"
                     "원문은 서버 role_boundary_audit.log 참조.\n"
@@ -249,13 +253,15 @@ def run_briefing():
             print(f"[브리핑] ✂ {len(cp['removed'])}줄 제거 후 발송", flush=True)
             try:
                 rm = "\n".join(f"· [{t}] {s[:60]}" for t, s in cp["removed"])
-                send_telegram("✂ <b>브리핑 일부 문장 제거</b> (역할 경계 C+)\n"
+                send_telegram("✂ 브리핑 일부 문장 제거 (역할 경계 C+)\n"
                               "아래 문장이 매매지시성으로 판단돼 제거된 뒤 발송됩니다.\n"
                               f"{rm}\n※ 오탐이면 알려주세요 — 검사기 조정 필요")
             except Exception as _ne:
                 logging.error(f"[역할경계] 제거 알림 발송 실패: {_ne}")
 
         # ── 발송 + 결과 기록 (§3) ──
+        from market_notice import build_market_notice
+        msg = build_market_notice() + '\n\n' + msg
         tg_ok   = send_telegram(msg)
         subject = f"📊 투자 브리핑 | {dt.now().strftime('%Y-%m-%d (%a)')}"
         em_ok   = send_email(subject, msg)
@@ -328,6 +334,9 @@ def run_event_detection():
 
 def run_briefing_review():
     """KST 17:50 - 아침 브리핑 복기 (DB/로그 기록만, 텔레그램 발송 안 함)"""
+    from market_calendar import block_reason
+    if block_reason():
+        return None
     weekday = datetime.now(timezone(timedelta(hours=9))).weekday()
     if weekday >= 5:
         return
@@ -342,13 +351,9 @@ def run_briefing_review():
 
 
 def is_market_open() -> bool:
-    """한국 장 시간 체크 (KST 09:00~15:30 평일)"""
-    from datetime import datetime, timezone, timedelta
-    kst = datetime.now(timezone(timedelta(hours=9)))
-    if kst.weekday() >= 5:
-        return False
-    h, m = kst.hour, kst.minute
-    return (h == 9) or (10 <= h <= 14) or (h == 15 and m <= 30)
+    from market_calendar import is_open_now
+    return is_open_now()
+
 
 
 def is_daytime() -> bool:
@@ -457,6 +462,8 @@ def _validate_config():
 
 
 def main():
+    from calendar_repair import ensure_calendar_repair
+    ensure_calendar_repair(config.DB_PATH, 'briefing')
     _validate_config()
     # 명령어 등록
     commands = [

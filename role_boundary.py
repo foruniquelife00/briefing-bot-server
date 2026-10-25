@@ -26,7 +26,7 @@ BANNED_SECTIONS = [
 # ★ '담' 단독은 금지 — "부담", "담당", "부담과" 등에 걸려 정상 해설을 차단한다
 #   (2026-08-05 실측: "과매수 부담과…" 가 매수 지시로 오인되어 브리핑 발송 차단)
 DIRECTIVE = (
-    r"(권장|권고|추천|해야|하라|하자|하시|바랍니다|필요합니다|"
+    r"(권장|권고|추천|해야|하라|하자|하시|하세요|해\s*주(?:세요|십시오)|적절합니다|적절하다|바랍니다|필요합니다|"
     r"유리합니다|바람직|검토하|고려하|늘리|줄이|확대|축소|편입|"
     r"담아|담는|담을|담자|비중을)"
 )
@@ -118,6 +118,28 @@ def _is_explanatory(sentence: str) -> bool:
     return any(w in sentence for w in EXPLANATORY)
 
 
+def _has_explicit_trade_direction(sentence: str) -> bool:
+    """An explicit reader command must not inherit another clause's exemption."""
+    return bool(re.search(
+        r"(?:비중|현금|포지션|매수|매도|진입|청산|편입|인버스|레버리지|헤지|담아)"
+        r"[^.!?\n;]{0,80}"
+        r"(?:하세요|하시기|하라|하자|해\s*주(?:세요|십시오)|바랍니다|"
+        r"권(?:장|고)합니다|추천합니다|해야|바람직|필요합니다|유리합니다|검토하|고려하|적절합니다|적절하다)", sentence))
+
+
+def _is_weight_sentiment_description(sentence: str) -> bool:
+    """Allow a terminal sentiment description, never a reader instruction."""
+    if re.search(r"권장|권고|추천|해야|하라|하자|하세요|하시|바랍니다|필요|유리|바람직|검토하|고려하|줄이|늘리|조정하|편입|매수하|매도하", sentence):
+        return False
+    match = re.search(
+        r"(?:비중|현금|포지션)\s*(?:확대|축소)\s*심리(?:를|을)?\s*반영(?:합니다|했다|했습니다|함)?\s*[.!?]?\s*$",
+        sentence)
+    if not match:
+        return False
+    prefix = sentence[:match.start()]
+    return not any(re.search(pattern, prefix) for pattern, _ in BANNED_PATTERNS)
+
+
 def _is_negated(sentence: str) -> bool:
     """금지·부정·동결을 밝히는 문장인지 (준수 표현 — 위반 아님)"""
     return any(w in sentence for w in NEGATION)
@@ -149,16 +171,19 @@ def check_role_boundary(text: str) -> dict:
                     break
 
     # (2) 의미 검사 — 문장 단위, 설명 맥락은 제외
-    sentences = re.split(r"[.!?\n]", text)
+    sentences = re.split(r"[.!?\n;；]", text)
     for sent in sentences:
         s = sent.strip()
         if len(s) < 6:
             continue
         # 사실 기술 / 금지·동결 선언 / 데이터 라벨은 위반이 아니다
-        if _is_explanatory(s) or _is_negated(s) or _is_supply_fact(s):
+        if not _has_explicit_trade_direction(s) and (
+                _is_explanatory(s) or _is_negated(s) or _is_supply_fact(s)):
             continue
         for pat, label in BANNED_PATTERNS:
             if re.search(pat, s):
+                if label == "비중·현금 조정 지시" and _is_weight_sentiment_description(s):
+                    continue
                 violations.append({"type": label, "evidence": s[:70]})
                 break
 
@@ -235,30 +260,18 @@ MAX_REDACT_LINES = 2          # 이보다 많으면 전체 차단 (§2-2 '3문�
 
 
 def _line_violations(text: str):
-    """줄 단위 위반 탐지 → [(줄번호, 유형, 원문, is_section)]"""
+    """Apply the same clause-scoped checker, retaining whole-line redaction."""
     out = []
     for i, line in enumerate(text.split("\n")):
         s = line.strip()
         if len(s) < 6:
             continue
-        if _is_explanatory(s) or _is_negated(s) or _is_supply_fact(s):
+        violations = check_role_boundary(s)["violations"]
+        if not violations:
             continue
-
-        # 섹션 제목 위반 (구조 위반 — 제거로 해결 안 됨)
-        is_title = len(s) <= 40 and (
-            re.match(r"^[\d#\-•*🧭⭐📌📊💼🔍💬]", s) or s.endswith(":"))
-        if is_title and not _is_data_label(s):
-            for b in BANNED_SECTIONS:
-                if b in s:
-                    out.append((i, "금지 섹션", s, True))
-                    break
-            if out and out[-1][0] == i:
-                continue
-
-        for pat, label in BANNED_PATTERNS:
-            if re.search(pat, s):
-                out.append((i, label, s, False))
-                break
+        section = next((v for v in violations if v["type"] == "금지 섹션"), None)
+        chosen = section or violations[0]
+        out.append((i, chosen["type"], s, section is not None))
     return out
 
 

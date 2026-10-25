@@ -616,7 +616,7 @@ with bt3:
         try:
             review_df = pd.read_sql(
                 "SELECT date, market_view, direction_result, sector_result, usefulness_grade "
-                "FROM briefing_history WHERE direction_result IS NOT NULL ORDER BY date DESC LIMIT 30",
+                "FROM briefing_history WHERE direction_result IN ('hit','partial','miss','neutral') ORDER BY date DESC LIMIT 30",
                 conn)
         except Exception:
             review_df = pd.DataFrame()

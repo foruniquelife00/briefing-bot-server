@@ -22,17 +22,17 @@ KST = timezone(timedelta(hours=9))
 DIR_THRESHOLD = 0.3   # %
 
 
-def _kospi_kosdaq_return():
+def _kospi_kosdaq_return(target_date=None):
     """오늘 KOSPI/KOSDAQ 등락률 (FDR)"""
     import FinanceDataReader as fdr
-    start = (datetime.now(KST) - timedelta(days=10)).strftime("%Y-%m-%d")
-    end   = datetime.now(KST).strftime("%Y-%m-%d")
+    start = (datetime.fromisoformat(target_date) - timedelta(days=10) if target_date else datetime.now(KST) - timedelta(days=10)).strftime("%Y-%m-%d")
+    end   = target_date or datetime.now(KST).strftime("%Y-%m-%d")
     out = {}
     for key, code in [("kospi", "KS11"), ("kosdaq", "KQ11")]:
         try:
             df = fdr.DataReader(code, start, end)
             v = df["Close"].dropna()
-            out[key] = round((v.iloc[-1] - v.iloc[-2]) / v.iloc[-2] * 100, 2) if len(v) >= 2 else None
+            out[key] = round((v.iloc[-1] - v.iloc[-2]) / v.iloc[-2] * 100, 2) if len(v) >= 2 and v.index[-1].strftime('%Y-%m-%d') == end else None
         except Exception:
             out[key] = None
     return out
@@ -60,13 +60,13 @@ def _sector_tickers(keyword: str) -> list[str]:
     return [tk for tk, sec in SECTOR_MAP.items() if keyword in sec][:6]
 
 
-def _judge_sectors(sectors_csv: str, kospi_ret: float) -> tuple[str, list]:
+def _judge_sectors(sectors_csv: str, kospi_ret: float, target_date=None) -> tuple[str, list]:
     """언급 섹터(강세 관찰 가정) 평균수익 vs KOSPI → hit/partial/miss/pending"""
     if not sectors_csv or kospi_ret is None:
         return "pending", []
     import FinanceDataReader as fdr
-    start = (datetime.now(KST) - timedelta(days=10)).strftime("%Y-%m-%d")
-    end   = datetime.now(KST).strftime("%Y-%m-%d")
+    start = (datetime.fromisoformat(target_date) - timedelta(days=10) if target_date else datetime.now(KST) - timedelta(days=10)).strftime("%Y-%m-%d")
+    end   = target_date or datetime.now(KST).strftime("%Y-%m-%d")
 
     details = []
     for kw in sectors_csv.split(","):
@@ -79,7 +79,7 @@ def _judge_sectors(sectors_csv: str, kospi_ret: float) -> tuple[str, list]:
             try:
                 df = fdr.DataReader(tk, start, end)
                 v = df["Close"].dropna()
-                if len(v) >= 2:
+                if len(v) >= 2 and v.index[-1].strftime('%Y-%m-%d') == end:
                     rets.append((v.iloc[-1] - v.iloc[-2]) / v.iloc[-2] * 100)
             except Exception:
                 pass
@@ -119,6 +119,10 @@ def _judge_usefulness(text: str) -> tuple[str, dict]:
 
 def evaluate_briefing(date: str = None) -> str:
     """오늘(또는 지정일) 브리핑 복기 → DB 기록 + 복기 텍스트 반환"""
+    from market_calendar import block_reason
+    reason = block_reason(date)
+    if reason:
+        return f'[복기] {date or datetime.now(KST).date()} {reason} — 평가 제외'
     if date is None:
         date = datetime.now(KST).strftime("%Y-%m-%d")
 
@@ -133,11 +137,11 @@ def evaluate_briefing(date: str = None) -> str:
 
     text, view, sectors = row[0] or "", row[1] or "", row[2] or ""
 
-    idx = _kospi_kosdaq_return()
+    idx = _kospi_kosdaq_return(date)
     kospi_ret, kosdaq_ret = idx.get("kospi"), idx.get("kosdaq")
 
     dir_result = _judge_direction(view, kospi_ret)
-    sec_result, sec_details = _judge_sectors(sectors, kospi_ret)
+    sec_result, sec_details = _judge_sectors(sectors, kospi_ret, date)
     use_grade, use_checks = _judge_usefulness(text)
 
     # 복기 텍스트

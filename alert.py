@@ -4,6 +4,7 @@ import os
 from pathlib import Path
 from datetime import datetime, timezone, timedelta
 from watchlist import load_watchlist, STOCK_MAP
+from alert_quote_guard import validate_kr_quote
 # ★ requests / config 직접 import 제거 (2026-09-04)
 #   자체 requests.post로 텔레그램을 발송하던 코드가 버그의 원인이었다.
 #   발송은 sender.send_telegram(검증된 경로)에 위임한다 — check_alerts()에서 지연 import.
@@ -86,20 +87,9 @@ def get_alert_settings_text() -> str:
     return "\n".join(lines)
 
 def is_market_hours() -> bool:
-    """KST 09:00~15:30 장 시간 체크"""
-    kst     = datetime.now(timezone(timedelta(hours=9)))
-    weekday = kst.weekday()
-    if weekday >= 5:
-        return False
-    hour   = kst.hour
-    minute = kst.minute
-    if hour < 9:
-        return False
-    if hour > 15:
-        return False
-    if hour == 15 and minute > 30:
-        return False
-    return True
+    from market_calendar import is_open_now
+    return is_open_now()
+
 
 def already_alerted(name: str, today: str) -> bool:
     log = load_alert_log()
@@ -162,8 +152,12 @@ def check_alerts():
             info   = t.fast_info
             price  = info.last_price
             prev   = info.regular_market_previous_close
-            rate   = (price - prev) / prev * 100
             is_kr  = ticker.endswith(".KS") or ticker.endswith(".KQ")
+            quote_at = None
+            if is_kr:
+                # Missing timestamps and provider failures must not reuse an old quote.
+                quote_at = validate_kr_quote(ticker, t.get_history_metadata(), price, prev)
+            rate   = (price - prev) / prev * 100
 
             # ★ 2026-09-10 사고 방어 — 국내주식 가격제한폭은 ±30% 다.
             #   그보다 큰 값은 시장 움직임이 아니라 **데이터 오류**다.
@@ -199,11 +193,13 @@ def check_alerts():
                 f"  현재가: {fmt(price)}\n"
                 f"  등락:   {rate:+.2f}% (임계값 ±{threshold}%){extra}\n"
                 f"  기준가: {fmt(prev)}\n"
+                + (f"  시세 기준: {quote_at:%Y-%m-%d %H:%M:%S} KST\n" if quote_at else "") +
                 f"━━━━━━━━━━━━━━━━━━━━━\n"
                 f"※ 가격 변동 사실 통보입니다. 매매 판단이 아닙니다."
             )
             # 세 번째 항목은 요약용 한 줄 (건수 초과 시 묶음 발송에 사용)
-            alerts.append((name, msg, f"{arrow} {name} {rate:+.2f}%  {fmt(price)}"))
+            stamp = f" · {quote_at:%Y-%m-%d %H:%M:%S} KST" if quote_at else ""
+            alerts.append((name, msg, f"{arrow} {name} {rate:+.2f}%  {fmt(price)}{stamp}"))
 
         except Exception as e:
             print(f"{name} 오류: {e}")

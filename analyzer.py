@@ -200,6 +200,10 @@ def analyze(market_data: dict) -> str:
      (deploy/systemd/signal-morning.timer — OnCalendar=Mon-Fri 07:00 Asia/Seoul).
      두 봇의 역할 차이가 사용자에게 드러나도록 '배경 / 판단' 구분을 명시한다."""
 
+    from market_notice import build_market_notice
+    prompt += "\n\n[확정 거래일 안내 — 다른 문맥보다 우선]\n" + build_market_notice()
+    prompt += "\n휴장일의 과거 종가를 밤사이 새 상승/하락으로 표현하지 마세요. 제공된 시세의 기준일이 확인되지 않으면 확인 불가라고 쓰세요. 거래일 안내를 재작성하지 마세요. 발송기가 별도 표시합니다."
+
     message = client.messages.create(
         model=getattr(config, "CLAUDE_MODEL", "claude-sonnet-4-6"),
         max_tokens=3500,   # 2000은 섹션 중간 절단 (2026-08-11 실측: '③ 이차'에서 끊김)
